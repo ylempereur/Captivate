@@ -1,0 +1,110 @@
+; File proc.a
+;———————————————————————————————————————————————————————————————
+;
+; Captivate proc v4.6
+;
+;       Yves Lempereur
+;
+; MODIFICATION HISTORY:
+;       04/02/91  YL    Project begins
+;       06/20/91  YL    Version 4.0
+;       07/30/91  YL    Version 4.0.1
+;       09/18/91  YL    Version 4.0.2
+;       08/11/92  YL    Version 4.0.3
+;       02/04/93  YL    Version 4.0.4
+;       12/10/94  YL    Version 4.5
+;       05/01/95  YL    Version 4.5.1
+;       03/04/96  YL    Version 4.5.2
+;       09/17/96  YL    Version 4.5.3
+;       09/26/96  YL    Version 4.6
+;
+;———————————————————————————————————————————————————————————————
+SystemSevenOrLater      EQU     1
+OLDROUTINELOCATIONS     EQU     0
+;———————————————————————————————————————————————————————————————
+                PRINT   PUSH,OFF
+
+                INCLUDE 'ConditionalMacros.a'
+                INCLUDE 'Types.a'
+                INCLUDE 'Errors.a'
+                INCLUDE 'Resources.a'
+                INCLUDE 'Menus.a'
+
+                PRINT   POP
+;———————————————————————————————————————————————————————————————
+; Resource Header
+;———————————————————————————————————————————————————————————————
+                MAIN    ENTRY
+
+                ENTRY   defHandle,extraWidth
+                IMPORT  MyMenu
+
+                BRA.S   MyMenu          ; enter here
+                DC      0               ; filler
+                DC.L    ('MDEF')        ; type
+                DC      0               ; ID
+                DC      $0460           ; version
+
+defHandle       DC.L    0
+extraWidth      DC      0
+
+                ENDMAIN
+;———————————————————————————————————————————————————————————————
+; PROCEDURE MyMenu (message: INTEGER; theMenu: MenuHandle; VAR menuRect: Rect;
+;                   hitPt: Point; VAR whichItem: INTEGER);
+;———————————————————————————————————————————————————————————————
+MyMenu          PROC    ENTRY
+
+StackFrame      RECORD  {A6Link},DECR
+ParamBegin      EQU     *
+message         DS.W    1
+theMenu         DS.L    1
+menuRect        DS.L    1
+hitPt           DS.L    1
+whichItem       DS.L    1
+ParamSize       EQU     ParamBegin-*
+RetAddr         DS.L    1
+A6Link          DS.L    1
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame
+
+                LINK    A6,#LocalSize
+                MOVE.L  A3,-(SP)
+                MOVE    (message,A6),-(SP)
+                MOVE.L  (theMenu,A6),-(SP)
+                MOVE.L  (menuRect,A6),-(SP)
+                MOVE.L  (hitPt,A6),-(SP)
+                MOVE.L  (whichItem,A6),-(SP)
+                MOVE.L  (defHandle,PC),A3
+                MOVE.L  A3,A0
+                TST.L   (A0)
+                BNE.S   @0
+                MOVE.L  A0,-(SP)
+                _LoadResource
+                TST.L   (A0)
+                BNE.S   @0
+                MOVEQ   #dsMDEFNotFound,D0
+                _SysError
+                BRA.S   Exit
+@0              _HLock
+                MOVE.L  (A0),A0
+                JSR     (A0)
+                MOVE.L  A3,A0
+                _HUnlock
+                CMP     #mSizeMsg,(message,A6)
+                BNE.S   Exit
+                MOVE    (extraWidth,PC),D0
+                MOVE.L  (theMenu,A6),A0
+                MOVE.L  (A0),A0
+                ADD     D0,(MenuInfo.menuWidth,A0)
+Exit            MOVE.L  (SP)+,A3
+                UNLK    A6
+                MOVE.L  (SP)+,A0
+                ADD     #ParamSize,SP
+                JMP     (A0)
+
+                ENDP
+;———————————————————————————————————————————————————————————————
+                END

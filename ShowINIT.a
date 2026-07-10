@@ -1,0 +1,501 @@
+; File ShowINIT.a
+;———————————————————————————————————————————————————————————————
+;
+; ShowINIT v2.0.2
+;
+;       Yves Lempereur
+;
+; MODIFICATION HISTORY:
+;       11/13/87  YL    Project begins
+;       01/10/88  YL    Version 1.0
+;       12/07/88  YL    Version 1.1
+;       08/25/89  YL    Version 1.2
+;       12/23/89  YL    Version 1.3
+;       02/17/90  YL    Version 1.4
+;       05/30/90  YL    Version 1.5
+;       07/22/90  YL    Version 1.5.1
+;       06/20/91  YL    Version 2.0
+;       04/03/95  YL    Version 2.0.1
+;       08/29/96  YL    Version 2.0.2
+;
+;———————————————————————————————————————————————————————————————
+SystemSevenOrLater      EQU     1
+OLDROUTINELOCATIONS     EQU     0
+;———————————————————————————————————————————————————————————————
+                PRINT   PUSH,OFF
+
+                INCLUDE 'ConditionalMacros.a'
+                INCLUDE 'Types.a'
+                INCLUDE 'Memory.a'
+                INCLUDE 'Resources.a'
+                INCLUDE 'Icons.a'
+                INCLUDE 'LowMemEqu.a'
+
+                PRINT   POP
+;———————————————————————————————————————————————————————————————
+myVCheck        EQU     CurApName+32-8
+myV             EQU     myVCheck+2
+myH             EQU     myV+2
+myHCheck        EQU     myH+2
+;———————————————————————————————————————————————————————————————
+LIcon           RECORD  0
+iconData8       DS.L    1
+iconData4       DS.L    1
+iconData1       DS.B    128
+iconMaskData    DS.B    128
+sizeof          EQU     *
+                ENDR
+;———————————————————————————————————————————————————————————————
+; pascal LIconHandle GetLIcon(short iconID);
+;———————————————————————————————————————————————————————————————
+GETLICON        FUNC    ENTRY
+
+StackFrame      RECORD  {A6Link},DECR
+Result          DS.L    1
+ParamBegin      EQU     *
+iconID          DS.W    1
+ParamSize       EQU     ParamBegin-*
+RetAddr         DS.L    1
+A6Link          DS.L    1
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame
+
+                LINK    A6,#LocalSize
+                MOVE.L  A4,-(SP)
+
+                MOVE.L  #LIcon.sizeof,D0
+                _NewHandleClear
+                BNE     @4
+                MOVE.L  A0,(Result,A6)
+                _MoveHHi
+                _HLock
+                MOVE.L  (A0),A4
+
+                SUBQ.L  #4,SP
+                MOVE.L  #large1BitMask,-(SP)
+                MOVE    (iconID,A6),-(SP)
+                _GetResource
+                MOVE.L  (SP)+,D0
+                BEQ.S   @3
+                MOVE.L  D0,A0
+                MOVE.L  (A0),A0
+                LEA     (LIcon.iconData1,A4),A1
+                MOVE.L  #256,D0
+                _BlockMove
+                BNE.S   @3
+
+                SUBQ.L  #4,SP
+                MOVE.L  #large4BitData,-(SP)
+                MOVE    (iconID,A6),-(SP)
+                _GetResource
+                MOVE.L  (SP)+,D0
+                BEQ.S   @0
+                MOVE.L  D0,A0
+                _HandToHand
+                TST     D0
+                BNE.S   @3
+                MOVE.L  A0,(LIcon.iconData4,A4)
+
+@0              SUBQ.L  #4,SP
+                MOVE.L  #large8BitData,-(SP)
+                MOVE    (iconID,A6),-(SP)
+                _GetResource
+                MOVE.L  (SP)+,D0
+                BEQ.S   @1
+                MOVE.L  D0,A0
+                _HandToHand
+                TST     D0
+                BNE.S   @2
+                MOVE.L  A0,(LIcon.iconData8,A4)
+
+@1              MOVE.L  (Result,A6),A0
+                _HUnlock
+                BRA.S   Exit
+
+@2              MOVE.L  (LIcon.iconData4,A4),D0
+                BEQ.S   @3
+                MOVE.L  D0,A0
+                _DisposeHandle
+@3              MOVE.L  (Result,A6),A0
+                _DisposeHandle
+@4              CLR.L   (Result,A6)
+
+Exit            MOVE.L  (SP)+,A4
+                UNLK    A6
+                MOVE.L  (SP)+,A0
+                ADDQ.L  #ParamSize,SP
+                JMP     (A0)
+
+                ENDF
+;———————————————————————————————————————————————————————————————
+; pascal void DisposLIcon(LIconHandle theIcon);
+;———————————————————————————————————————————————————————————————
+DISPOSLICON     PROC    ENTRY
+
+StackFrame      RECORD  {A6Link},DECR
+ParamBegin      EQU     *
+theIcon         DS.L    1
+ParamSize       EQU     ParamBegin-*
+RetAddr         DS.L    1
+A6Link          DS.L    1
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame
+
+                LINK    A6,#LocalSize
+                MOVE.L  A4,-(SP)
+
+                MOVE.L  (theIcon,A6),D0
+                BEQ.S   Exit
+                MOVE.L  D0,A0
+                _HLock
+                MOVE.L  (A0),A4
+
+                MOVE.L  (LIcon.iconData8,A4),D0
+                BEQ.S   @0
+                MOVE.L  D0,A0
+                _DisposeHandle
+
+@0              MOVE.L  (LIcon.iconData4,A4),D0
+                BEQ.S   @1
+                MOVE.L  D0,A0
+                _DisposeHandle
+
+@1              MOVE.L  (theIcon,A6),A0
+                _DisposeHandle
+
+Exit            MOVE.L  (SP)+,A4
+                UNLK    A6
+                MOVE.L  (SP)+,A0
+                ADDQ.L  #ParamSize,SP
+                JMP     (A0)
+
+                ENDP
+;———————————————————————————————————————————————————————————————
+; pascal void PlotLIcon(const Rect *theRect, LIconHandle theIcon);
+;———————————————————————————————————————————————————————————————
+PLOTLICON       PROC    ENTRY
+
+StackFrame      RECORD  {A6Link},DECR
+ParamBegin      EQU     *
+theRect         DS.L    1
+theIcon         DS.L    1
+ParamSize       EQU     ParamBegin-*
+RetAddr         DS.L    1
+A6Link          DS.L    1
+iconPMap        DS      PixMap
+iconBMap        DS      BitMap
+iconMask        DS      BitMap
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame,CurrentQDGlobals
+
+                LINK    A6,#LocalSize
+                MOVE.L  A4,-(SP)
+
+                MOVE.L  (theIcon,A6),D0
+                BEQ     Exit
+                MOVE.L  D0,A0
+                _HGetState
+                MOVE.B  D0,-(SP)
+                _MoveHHi
+                _HLock
+                MOVE.L  (A0),A4
+
+                LEA     (LIcon.iconMaskData,A4),A0
+                MOVE.L  A0,(iconMask.baseAddr,A6)
+                MOVE    #4,(iconMask.rowBytes,A6)
+                MOVE.L  #$00000000,(iconMask.bounds.topLeft,A6)
+                MOVE.L  #$00200020,(iconMask.bounds.botRight,A6)
+
+                CMP     #$3FFF,(ROM85)
+                BHI     @1
+                SUBQ.L  #4,SP
+                _GetGDevice
+                MOVE.L  (SP)+,A0
+                MOVE.L  (A0),A0
+                MOVE.L  (GDevice.gdPMap,A0),A0
+                MOVE.L  (A0),A0
+                MOVE    (PixMap.pixelSize,A0),D0
+                CMP     #4,D0
+                BLO     @1
+                CMP     #8,D0
+                BLO     @0
+
+                MOVE.L  (LIcon.iconData8,A4),D0
+                BEQ     @0
+                MOVE.L  D0,A0
+                _HGetState
+                MOVE.B  D0,-(SP)
+                _MoveHHi
+                _HLock
+                MOVE.L  (A0),(iconPMap.baseAddr,A6)
+                MOVE    #$8020,(iconPMap.rowBytes,A6)
+                MOVE.L  #$00000000,(iconPMap.bounds.topLeft,A6)
+                MOVE.L  #$00200020,(iconPMap.bounds.botRight,A6)
+                MOVE    #0,(iconPMap.pmVersion,A6)
+                MOVE    #0,(iconPMap.packType,A6)
+                MOVE.L  #0,(iconPMap.packSize,A6)
+                MOVE.L  #72*$10000,(iconPMap.hRes,A6)
+                MOVE.L  #72*$10000,(iconPMap.vRes,A6)
+                MOVE    #chunky,(iconPMap.pixelType,A6)
+                MOVE    #8,(iconPMap.pixelSize,A6)
+                MOVE    #1,(iconPMap.cmpCount,A6)
+                MOVE    #8,(iconPMap.cmpSize,A6)
+                MOVE.L  #0,(iconPMap.planeBytes,A6)
+                SUBQ.L  #4,SP
+                MOVE    #8,-(SP)
+                _GetCTable
+                MOVE.L  (SP)+,(iconPMap.pmTable,A6)
+                MOVE.L  #0,(iconPMap.pmReserved,A6)
+                MOVE.L  (0,A5),A0
+                MOVE.L  (thePort,A0),A0
+                PEA     (iconPMap,A6)
+                PEA     (iconMask,A6)
+                PEA     (GrafPort.portBits,A0)
+                PEA     (iconPMap.bounds,A6)
+                PEA     (iconMask.bounds,A6)
+                MOVE.L  (theRect,A6),-(SP)
+                _CopyMask
+                MOVE.L  (iconPMap.pmTable,A6),-(SP)
+                _DisposeCTable
+                MOVE.L  (LIcon.iconData8,A4),A0
+                MOVE.B  (SP)+,D0
+                _HSetState
+                BRA     @2
+
+@0              MOVE.L  (LIcon.iconData4,A4),D0
+                BEQ     @1
+                MOVE.L  D0,A0
+                _HGetState
+                MOVE.B  D0,-(SP)
+                _MoveHHi
+                _HLock
+                MOVE.L  (A0),(iconPMap.baseAddr,A6)
+                MOVE    #$8010,(iconPMap.rowBytes,A6)
+                MOVE.L  #$00000000,(iconPMap.bounds.topLeft,A6)
+                MOVE.L  #$00200020,(iconPMap.bounds.botRight,A6)
+                MOVE    #0,(iconPMap.pmVersion,A6)
+                MOVE    #0,(iconPMap.packType,A6)
+                MOVE.L  #0,(iconPMap.packSize,A6)
+                MOVE.L  #72*$10000,(iconPMap.hRes,A6)
+                MOVE.L  #72*$10000,(iconPMap.vRes,A6)
+                MOVE    #chunky,(iconPMap.pixelType,A6)
+                MOVE    #4,(iconPMap.pixelSize,A6)
+                MOVE    #1,(iconPMap.cmpCount,A6)
+                MOVE    #4,(iconPMap.cmpSize,A6)
+                MOVE.L  #0,(iconPMap.planeBytes,A6)
+                SUBQ.L  #4,SP
+                MOVE    #4,-(SP)
+                _GetCTable
+                MOVE.L  (SP)+,(iconPMap.pmTable,A6)
+                MOVE.L  #0,(iconPMap.pmReserved,A6)
+                MOVE.L  (0,A5),A0
+                MOVE.L  (thePort,A0),A0
+                PEA     (iconPMap,A6)
+                PEA     (iconMask,A6)
+                PEA     (GrafPort.portBits,A0)
+                PEA     (iconPMap.bounds,A6)
+                PEA     (iconMask.bounds,A6)
+                MOVE.L  (theRect,A6),-(SP)
+                _CopyMask
+                MOVE.L  (iconPMap.pmTable,A6),-(SP)
+                _DisposeCTable
+                MOVE.L  (LIcon.iconData4,A4),A0
+                MOVE.B  (SP)+,D0
+                _HSetState
+                BRA.S   @2
+
+@1              LEA     (LIcon.iconData1,A4),A0
+                MOVE.L  A0,(iconBMap.baseAddr,A6)
+                MOVE    #4,(iconBMap.rowBytes,A6)
+                MOVE.L  #$00000000,(iconBMap.bounds.topLeft,A6)
+                MOVE.L  #$00200020,(iconBMap.bounds.botRight,A6)
+                MOVE.L  (0,A5),A0
+                MOVE.L  (thePort,A0),A0
+                PEA     (iconBMap,A6)
+                PEA     (iconMask,A6)
+                PEA     (GrafPort.portBits,A0)
+                PEA     (iconBMap.bounds,A6)
+                PEA     (iconMask.bounds,A6)
+                MOVE.L  (theRect,A6),-(SP)
+                _CopyMask
+
+@2              MOVE.L  (theIcon,A6),A0
+                MOVE.B  (SP)+,D0
+                _HSetState
+
+Exit            MOVE.L  (SP)+,A4
+                UNLK    A6
+                MOVE.L  (SP)+,A0
+                ADDQ.L  #ParamSize,SP
+                JMP     (A0)
+
+                ENDP
+;———————————————————————————————————————————————————————————————
+; PROCEDURE InitVH;
+;———————————————————————————————————————————————————————————————
+InitVH          PROC    ENTRY
+
+                WITH    CurrentQDGlobals
+
+                MOVE.L  (0,A5),A0
+                MOVE    (myH),D0
+                ROL     #1,D0
+                EOR     #$1021,D0
+                CMP     (myHCheck),D0
+                BEQ.S   @0
+                MOVE    #8,(myH)
+@0              MOVE    (myV),D0
+                ROL     #1,D0
+                EOR     #$1021,D0
+                CMP     (myVCheck),D0
+                BEQ.S   @1
+                MOVE    (screenBits.bounds.bottom,A0),D0
+                SUB     #8+32,D0
+                MOVE    D0,(myV)
+@1              MOVE    (myH),D0
+                ADD     #32,D0
+                CMP     (screenBits.bounds.right,A0),D0
+                BLT.S   Exit
+                MOVE    #8,(myH)
+                SUB     #8+32,(myV)
+Exit            RTS
+
+                ENDP
+;———————————————————————————————————————————————————————————————
+; PROCEDURE UpdateVH (dh: INTEGER);
+;———————————————————————————————————————————————————————————————
+UpdateVH        PROC    ENTRY
+
+StackFrame      RECORD  {RetAddr},DECR
+ParamBegin      EQU     *
+dh              DS.W    1
+ParamSize       EQU     ParamBegin-*
+RetAddr         DS.L    1
+                ENDR
+
+                WITH    StackFrame
+
+                MOVE    (myH),D0
+                MOVE    (dh,SP),D1
+                BPL.S   @0
+                MOVE    #32+8,D1
+@0              ADD     D1,D0
+                MOVE    D0,(myH)
+                ROL     #1,D0
+                EOR     #$1021,D0
+                MOVE    D0,(myHCheck)
+                MOVE    (myV),D0
+                ROL     #1,D0
+                EOR     #$1021,D0
+                MOVE    D0,(myVCheck)
+                MOVE.L  (SP)+,A0
+                ADDQ.L  #ParamSize,SP
+                JMP     (A0)
+
+                ENDP
+;———————————————————————————————————————————————————————————————
+; PROCEDURE SetUpRect (VAR r: Rect);
+;———————————————————————————————————————————————————————————————
+SetUpRect       PROC    ENTRY
+
+StackFrame      RECORD  {RetAddr},DECR
+r               DS.L    1
+RetAddr         DS.L    1
+                ENDR
+
+                WITH    StackFrame
+
+                MOVE.L  (r,SP),A0
+                MOVE.L  (myV),D0
+                MOVE.L  D0,(Rect.topLeft,A0)
+                MOVE.L  D0,(Rect.botRight,A0)
+                MOVEQ   #32,D0
+                ADD     D0,(Rect.bottom,A0)
+                ADD     D0,(Rect.right,A0)
+                MOVE.L  (SP)+,(SP)
+                RTS
+
+                ENDP
+;———————————————————————————————————————————————————————————————
+; PROCEDURE ShowINIT (iconID,dh: INTEGER);
+;———————————————————————————————————————————————————————————————
+ShowINIT        PROC    EXPORT
+
+StackFrame      RECORD  {A6Link},DECR
+iconID          DS.W    1
+dh              DS.W    1
+RetAddr         DS.L    1
+A6Link          DS.L    1
+saveA5          DS.L    1
+saveCurrentA5   DS.L    1
+localA5         DS.L    1
+QDVars          DS      QDGlobals
+destRect        DS      Rect
+myPort          DS      GrafPort
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame
+
+                LINK    A6,#LocalSize
+                MOVE.L  A4,-(SP)
+
+                TST     (ROM85)
+                BMI.S   Exit
+
+                MOVE.L  A5,(saveA5,A6)
+                MOVE.L  (CurrentA5),(saveCurrentA5,A6)
+                LEA     (localA5,A6),A5
+                MOVE.L  A5,(CurrentA5)
+                PEA     (QDVars.thePort,A6)
+                _InitGraf
+
+                SUBQ.L  #4,SP
+                MOVE    (iconID,A6),-(SP)
+                BSR     GetLIcon
+                MOVE.L  (SP)+,D0
+                BEQ.S   @2
+                MOVE.L  D0,A4
+
+                CMP     #$3FFF,(ROM85)
+                BHI.S   @0
+                PEA     (myPort,A6)
+                _OpenCPort
+                BRA.S   @1
+@0              PEA     (myPort,A6)
+                _OpenPort
+
+@1              BSR     InitVH
+                PEA     (destRect,A6)
+                BSR     SetUpRect
+
+                PEA     (destRect,A6)
+                MOVE.L  A4,-(SP)
+                BSR     PlotLIcon
+
+                MOVE    (dh,A6),-(SP)
+                BSR     UpdateVH
+
+                PEA     (myPort,A6)
+                _ClosePort
+
+                MOVE.L  A4,-(SP)
+                BSR     DisposLIcon
+
+@2              MOVE.L  (saveA5,A6),A5
+                MOVE.L  (saveCurrentA5,A6),(CurrentA5)
+
+Exit            MOVE.L  (SP)+,A4
+                UNLK    A6
+                MOVE.L  (SP)+,(SP)
+                RTS
+
+                ENDP
+;———————————————————————————————————————————————————————————————
+                END

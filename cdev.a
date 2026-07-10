@@ -1,0 +1,2931 @@
+; File cdev.a
+;———————————————————————————————————————————————————————————————
+;
+; Captivate cdev v4.6
+;
+;       Yves Lempereur
+;
+; MODIFICATION HISTORY:
+;       03/24/89  YL    Project begins
+;       05/19/89  YL    Version 2.0
+;       05/24/90  YL    Version 3.0
+;       06/20/91  YL    Version 4.0
+;       07/30/91  YL    Version 4.0.1
+;       09/18/91  YL    Version 4.0.2
+;       08/11/92  YL    Version 4.0.3
+;       02/04/93  YL    Version 4.0.4
+;       12/10/94  YL    Version 4.5
+;       05/01/95  YL    Version 4.5.1
+;       03/04/96  YL    Version 4.5.2
+;       09/17/96  YL    Version 4.5.3
+;       09/26/96  YL    Version 4.6
+;
+;———————————————————————————————————————————————————————————————
+SystemSevenOrLater      EQU     1
+OLDROUTINELOCATIONS     EQU     0
+;———————————————————————————————————————————————————————————————
+                PRINT   PUSH,OFF
+
+                INCLUDE 'ConditionalMacros.a'
+                INCLUDE 'Types.a'
+                INCLUDE 'Memory.a'
+                INCLUDE 'Resources.a'
+                INCLUDE 'Devices.a'
+                INCLUDE 'Script.a'
+                INCLUDE 'OSUtils.a'
+                INCLUDE 'TextUtils.a'
+                INCLUDE 'Folders.a'
+                INCLUDE 'Quickdraw.a'
+                INCLUDE 'Controls.a'
+                INCLUDE 'Dialogs.a'
+                INCLUDE 'StandardFile.a'
+                INCLUDE 'Gestalt.a'
+                INCLUDE 'LowMemEqu.a'
+
+                PRINT   POP
+;———————————————————————————————————————————————————————————————
+NIL             EQU     0
+;———————————————————————————————————————————————————————————————
+ETX             EQU     $03
+BS              EQU     $08
+HT              EQU     $09
+CR              EQU     $0D
+FS              EQU     $1C
+GS              EQU     $1D
+RS              EQU     $1E
+US              EQU     $1F
+;———————————————————————————————————————————————————————————————
+arrowCursor     EQU     0
+;———————————————————————————————————————————————————————————————
+keysItem        EQU     1
+folderItem      EQU     2
+applItem        EQU     3
+crsrItem        EQU     4
+forceItem       EQU     5
+nameItem        EQU     6
+noteItem        EQU     7
+scaleItem       EQU     8
+delayItem       EQU     9
+areaItem        EQU     10
+formatItem      EQU     11
+keysTxtItem     EQU     12
+folderTxtItem   EQU     13
+applTxtItem     EQU     14
+areaTxtItem     EQU     15
+formatTxtItem   EQU     16
+bannerItem      EQU     17
+;———————————————————————————————————————————————————————————————
+TextState       RECORD  0
+
+txFont          DS      1
+txFace          DS      1
+txMode          DS      1
+txSize          DS      1
+
+                ENDR
+;———————————————————————————————————————————————————————————————
+applRec         RECORD  0
+
+creator         DS.L    1
+fileName        DS.B    32
+
+                ENDR
+;———————————————————————————————————————————————————————————————
+cnfgRec         RECORD  0
+
+options         DS      1               ; 15=crsr, 14=force, 13=name, 12=note
+keyCode         DS      1
+scale           DS      1
+delay           DS      1
+area            DS      1
+format          DS      1
+dirID           DS.L    1
+volName         DS.B    28
+applPICT        DS      applRec
+applTIFF5       DS      applRec
+applTIFF4       DS      applRec
+applGIF87       DS      applRec
+applPaint       DS      applRec
+cnfgSize        EQU     *
+
+                ENDR
+;———————————————————————————————————————————————————————————————
+Globals         RECORD  0               ; Captivate Globals
+
+config          DS      cnfgRec
+whichTE         DS      1
+hTE             DS.L    1
+hTE0            DS.L    1
+hTE1            DS.L    1
+mouseRgn        DS.L    1
+hasFindFolder   DS.B    1
+GlobalSize      EQU     *
+
+                ENDR
+;———————————————————————————————————————————————————————————————
+; Resource Header
+;———————————————————————————————————————————————————————————————
+                MAIN    ENTRY
+
+                IMPORT  cdev
+
+                BRA.S   @0              ; enter here
+                DC      0               ; filler
+                DC.L    ('cdev')        ; type
+                DC      -4064           ; ID
+                DC      $0460           ; version
+
+@0              BRA     cdev
+
+                ENDMAIN
+;———————————————————————————————————————————————————————————————
+; Routine name  TrapAvailable
+;
+; On entry      D0: trapNum (word)
+;
+; On exit       D0: 0 if not available, or -1 if available (byte)
+;———————————————————————————————————————————————————————————————
+TrapAvailable   FUNC    ENTRY
+
+ToolTrapBit     EQU     11
+InitGraf        EQU     $A86E
+Unimplemented   EQU     $A89F
+
+                MOVEM.L D1/A0/A1,-(SP)
+                BTST    #ToolTrapBit,D0
+                BEQ.S   @3
+                AND     #$07FF,D0
+                EXG     D0,D1
+                MOVE    #InitGraf,D0
+                _GetToolTrapAddress
+                MOVE.L  A0,A1
+                MOVE    #$AA6E,D0
+                _GetToolTrapAddress
+                CMP.L   A0,A1
+                BNE.S   @0
+                MOVE    #$200,D0
+                BRA.S   @1
+@0              MOVE    #$400,D0
+@1              EXG     D0,D1
+                CMP     D1,D0
+                BLO.S   @2
+                MOVE    #Unimplemented,D0
+@2              _GetToolTrapAddress
+                BRA.S   @4
+@3              _GetOSTrapAddress
+@4              MOVE.L  A0,A1
+                MOVE    #Unimplemented,D0
+                _GetToolTrapAddress
+                CMP.L   A0,A1
+                SNE     D0
+                MOVEM.L (SP)+,D1/A0/A1
+                TST.B   D0
+                RTS
+
+                ENDF
+;———————————————————————————————————————————————————————————————
+; PROCEDURE Concat (str0,str1,… : Str255; VAR theString: Str255; n: INTEGER);
+;———————————————————————————————————————————————————————————————
+Concat          PROC    ENTRY
+
+                MOVEM.L D0-D2/A0-A2,-(SP)
+                LEA     (28,SP),A1
+                MOVE    (A1)+,D0
+                MOVE.L  (A1)+,A0
+                MOVE    D0,D2
+                ADD     D2,D2
+                ADD     D2,D2
+                ADD     D2,A1
+                CLR     D1
+                ADDQ    #1,A0
+                BRA.S   @3
+@0              MOVE.L  -(A1),A2
+                CLR     D2
+                MOVE.B  (A2)+,D2
+                ADD     D2,D1
+                CMP     #255,D1
+                BLE.S   @2
+                SUB     #255,D1
+                SUB     D1,D2
+                MOVE    #255,D1
+                BRA.S   @2
+@1              MOVE.B  (A2)+,(A0)+
+@2              DBRA    D2,@1
+@3              DBRA    D0,@0
+                MOVE.L  -(A1),A0
+                MOVE.B  D1,(A0)
+                MOVE    -(A1),D0
+                MOVE.L  A1,A0
+                ADD     D0,D0
+                ADD     D0,D0
+                ADD     D0,A0
+                ADDQ    #2,A0
+                MOVE.L  -(A1),(A0)
+                MOVE.L  A0,(A1)
+                MOVEM.L (SP)+,D0-D2/A0-A2
+                MOVE.L  (SP)+,SP
+                RTS
+
+                ENDP
+;———————————————————————————————————————————————————————————————
+; PROCEDURE GetTextState (VAR txState: TextState);
+;———————————————————————————————————————————————————————————————
+GetTextState    PROC    ENTRY
+
+StackFrame      RECORD  {RetAddr},DECR
+txState         DS.L    1
+RetAddr         DS.L    1
+                ENDR
+
+                WITH    StackFrame,CurrentQDGlobals
+
+                MOVE.L  (0,A5),A0
+                MOVE.L  (thePort,A0),A0
+                LEA     (GrafPort.txFont,A0),A0
+                MOVE.L  (txState,SP),A1
+                MOVE.L  (A0)+,(A1)+
+                MOVE.L  (A0)+,(A1)+
+                MOVE.L  (SP)+,(SP)
+                RTS
+
+                ENDP
+;———————————————————————————————————————————————————————————————
+; PROCEDURE SetTextState (txState: TextState);
+;———————————————————————————————————————————————————————————————
+SetTextState    PROC    ENTRY
+
+StackFrame      RECORD  {RetAddr},DECR
+txState         DS.L    1
+RetAddr         DS.L    1
+                ENDR
+
+                WITH    StackFrame,CurrentQDGlobals
+
+                MOVE.L  (0,A5),A0
+                MOVE.L  (thePort,A0),A0
+                LEA     (GrafPort.txFont,A0),A0
+                MOVE.L  (txState,SP),A1
+                MOVE.L  (A1)+,(A0)+
+                MOVE.L  (A1)+,(A0)+
+                MOVE.L  (SP)+,(SP)
+                RTS
+
+                ENDP
+;———————————————————————————————————————————————————————————————
+; FUNCTION GetIValue (theDialog: DialogPtr; itemNo: INTEGER) : INTEGER;
+;———————————————————————————————————————————————————————————————
+GetIValue       FUNC    ENTRY
+
+StackFrame      RECORD  {A6Link},DECR
+Result          DS      1
+ParamBegin      EQU     *
+theDialog       DS.L    1
+itemNo          DS      1
+ParamSize       EQU     ParamBegin-*
+RetAddr         DS.L    1
+A6Link          DS.L    1
+itemType        DS      1
+item            DS.L    1
+box             DS.B    8
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame
+
+                LINK    A6,#LocalSize
+                MOVE.L  (theDialog,A6),-(SP)
+                MOVE    (itemNo,A6),-(SP)
+                PEA     (itemType,A6)
+                PEA     (item,A6)
+                PEA     (box,A6)
+                _GetDialogItem
+                SUBQ.L  #2,SP
+                MOVE.L  (item,A6),-(SP)
+                _GetControlValue
+                MOVE    (SP)+,(Result,A6)
+                UNLK    A6
+                MOVE.L  (SP)+,A0
+                ADDQ.L  #ParamSize,SP
+                JMP     (A0)
+
+                ENDF
+;———————————————————————————————————————————————————————————————
+; PROCEDURE SetIValue (theDialog: DialogPtr; itemNo: INTEGER; theValue: INTEGER);
+;———————————————————————————————————————————————————————————————
+SetIValue       PROC    ENTRY
+
+StackFrame      RECORD  {A6Link},DECR
+ParamBegin      EQU     *
+theDialog       DS.L    1
+itemNo          DS      1
+theValue        DS      1
+ParamSize       EQU     ParamBegin-*
+RetAddr         DS.L    1
+A6Link          DS.L    1
+itemType        DS      1
+item            DS.L    1
+box             DS.B    8
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame
+
+                LINK    A6,#LocalSize
+                MOVE.L  (theDialog,A6),-(SP)
+                MOVE    (itemNo,A6),-(SP)
+                PEA     (itemType,A6)
+                PEA     (item,A6)
+                PEA     (box,A6)
+                _GetDialogItem
+                MOVE.L  (item,A6),-(SP)
+                MOVE    (theValue,A6),-(SP)
+                _SetControlValue
+                UNLK    A6
+                MOVE.L  (SP)+,A0
+                ADDQ.L  #ParamSize,SP
+                JMP     (A0)
+
+                ENDP
+;———————————————————————————————————————————————————————————————
+; PROCEDURE SetIHilite (theDialog: DialogPtr; itemNo: INTEGER; hiliteState: INTEGER);
+;———————————————————————————————————————————————————————————————
+SetIHilite      PROC    ENTRY
+
+StackFrame      RECORD  {A6Link},DECR
+ParamBegin      EQU     *
+theDialog       DS.L    1
+itemNo          DS      1
+hiliteState     DS      1
+ParamSize       EQU     ParamBegin-*
+RetAddr         DS.L    1
+A6Link          DS.L    1
+itemType        DS      1
+item            DS.L    1
+box             DS.B    8
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame
+
+                LINK    A6,#LocalSize
+                MOVE.L  (theDialog,A6),-(SP)
+                MOVE    (itemNo,A6),-(SP)
+                PEA     (itemType,A6)
+                PEA     (item,A6)
+                PEA     (box,A6)
+                _GetDialogItem
+                MOVE.L  (item,A6),-(SP)
+                MOVE    (hiliteState,A6),-(SP)
+                _HiliteControl
+                UNLK    A6
+                MOVE.L  (SP)+,A0
+                ADDQ.L  #ParamSize,SP
+                JMP     (A0)
+
+                ENDP
+;———————————————————————————————————————————————————————————————
+; PROCEDURE GetIBox (theDialog: DialogPtr; itemNo: INTEGER; VAR box: Rect);
+;———————————————————————————————————————————————————————————————
+GetIBox         PROC    ENTRY
+
+StackFrame      RECORD  {A6Link},DECR
+ParamBegin      EQU     *
+theDialog       DS.L    1
+itemNo          DS      1
+box             DS.L    1
+ParamSize       EQU     ParamBegin-*
+RetAddr         DS.L    1
+A6Link          DS.L    1
+itemType        DS      1
+item            DS.L    1
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame
+
+                LINK    A6,#LocalSize
+                MOVE.L  (theDialog,A6),-(SP)
+                MOVE    (itemNo,A6),-(SP)
+                PEA     (itemType,A6)
+                PEA     (item,A6)
+                MOVE.L  (box,A6),-(SP)
+                _GetDialogItem
+                UNLK    A6
+                MOVE.L  (SP)+,A0
+                ADD     #ParamSize,SP
+                JMP     (A0)
+
+                ENDP
+;———————————————————————————————————————————————————————————————
+; PROCEDURE SetIBox (theDialog: DialogPtr; itemNo: INTEGER; box: Rect);
+;———————————————————————————————————————————————————————————————
+SetIBox         PROC    ENTRY
+
+StackFrame      RECORD  {A6Link},DECR
+ParamBegin      EQU     *
+theDialog       DS.L    1
+itemNo          DS      1
+box             DS.L    1
+ParamSize       EQU     ParamBegin-*
+RetAddr         DS.L    1
+A6Link          DS.L    1
+itemType        DS      1
+item            DS.L    1
+oldBox          DS.B    8
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame
+
+                LINK    A6,#LocalSize
+                MOVE.L  (theDialog,A6),-(SP)
+                MOVE    (itemNo,A6),-(SP)
+                PEA     (itemType,A6)
+                PEA     (item,A6)
+                PEA     (oldBox,A6)
+                _GetDialogItem
+                MOVE.L  (theDialog,A6),-(SP)
+                MOVE    (itemNo,A6),-(SP)
+                MOVE    (itemType,A6),-(SP)
+                MOVE.L  (item,A6),-(SP)
+                MOVE.L  (box,A6),-(SP)
+                _SetDialogItem
+                UNLK    A6
+                MOVE.L  (SP)+,A0
+                ADD     #ParamSize,SP
+                JMP     (A0)
+
+                ENDP
+;———————————————————————————————————————————————————————————————
+; PROCEDURE SetCursor (cursorID: INTEGER);
+;———————————————————————————————————————————————————————————————
+SetCursor       PROC    ENTRY
+
+StackFrame      RECORD  {A6Link},DECR
+ParamBegin      EQU     *
+cursorID        DS      1
+ParamSize       EQU     ParamBegin-*
+RetAddr         DS.L    1
+A6Link          DS.L    1
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame,CurrentQDGlobals
+
+                LINK    A6,#LocalSize
+                MOVE    (cursorID,A6),D0
+                BEQ.S   @0
+                SUBQ.L  #4,SP
+                MOVE    D0,-(SP)
+                _GetCursor
+                MOVE.L  (SP)+,D0
+                BEQ.S   @0
+                MOVE.L  D0,A0
+                MOVE.L  (A0),-(SP)
+                _SetCursor
+                BRA.S   Exit
+@0              MOVE.L  (0,A5),A0
+                PEA     (arrow,A0)
+                _SetCursor
+Exit            UNLK    A6
+                MOVE.L  (SP)+,A0
+                ADDQ.L  #ParamSize,SP
+                JMP     (A0)
+
+                ENDP
+;———————————————————————————————————————————————————————————————
+; PROCEDURE CenterWindow (windowID: INTEGER);
+;———————————————————————————————————————————————————————————————
+CenterWindow    PROC    ENTRY
+
+WindowTemplate  RECORD  0
+boundsRect      DS      Rect
+procID          DS.W    1
+visible         DS.B    1
+filler1         DS.B    1
+goAwayFlag      DS.B    1
+filler2         DS.B    1
+refCon          DS.L    1
+title           DS.L    64
+sizeof          EQU     *
+                ENDR
+
+StackFrame      RECORD  {A6Link},DECR
+ParamBegin      EQU     *
+windowID        DS.W    1
+ParamSize       EQU     ParamBegin-*
+RetAddr         DS.L    1
+A6Link          DS.L    1
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame,CurrentQDGlobals
+
+                LINK    A6,#LocalSize
+                SUBQ.L  #4,SP
+                MOVE.L  #'WIND',-(SP)
+                MOVE    (windowID,A6),-(SP)
+                _GetResource
+                MOVE.L  (SP)+,D0
+                BEQ.S   Exit
+                MOVE.L  D0,A1
+                MOVE.L  (A1),A1
+                MOVE.L  (0,A5),A0
+                MOVEQ   #20,D0
+                TST     (ROM85)
+                BMI.S   @0
+                MOVE    (MBarHeight),D0                         ; GetMBarHeight
+@0              ADD     (screenBits.bounds.top,A0),D0
+                SUB     (WindowTemplate.boundsRect.top,A1),D0
+                ASL     #1,D0
+                ADD     (screenBits.bounds.bottom,A0),D0
+                SUB     (WindowTemplate.boundsRect.bottom,A1),D0
+                EXT.L   D0
+                DIVS    #3,D0
+                MOVE    (screenBits.bounds.left,A0),D1
+                ADD     (screenBits.bounds.right,A0),D1
+                SUB     (WindowTemplate.boundsRect.left,A1),D1
+                SUB     (WindowTemplate.boundsRect.right,A1),D1
+                ASR     #1,D1
+                ADD     D0,(A1)+
+                ADD     D1,(A1)+
+                ADD     D0,(A1)+
+                ADD     D1,(A1)+
+Exit            UNLK    A6
+                MOVE.L  (SP)+,A0
+                ADDQ.L  #ParamSize,SP
+                JMP     (A0)
+
+                ENDP
+;———————————————————————————————————————————————————————————————
+; FUNCTION CenterSF (dialogID: INTEGER) : LONGINT;
+;———————————————————————————————————————————————————————————————
+CenterSF        FUNC    ENTRY
+
+StackFrame      RECORD  {A6Link},DECR
+Result          DS.L    1
+ParamBegin      EQU     *
+dialogID        DS      1
+ParamSize       EQU     ParamBegin-*
+RetAddr         DS.L    1
+A6Link          DS.L    1
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame,CurrentQDGlobals
+
+                LINK    A6,#LocalSize
+                CLR.L   (Result,A6)
+                SUBQ.L  #4,SP
+                MOVE.L  #'DLOG',-(SP)
+                MOVE    (dialogID,A6),-(SP)
+                _GetResource
+                MOVE.L  (SP)+,D0
+                BEQ.S   Exit
+                MOVE.L  D0,A1
+                MOVE.L  (A1),A1
+                MOVE.L  (0,A5),A0
+                MOVEQ   #20,D0
+                TST     (ROM85)
+                BMI.S   @0
+                MOVE    (MBarHeight),D0                         ; GetMBarHeight
+@0              ADD     (screenBits.bounds.top,A0),D0
+                ASL     #1,D0
+                ADD     (screenBits.bounds.bottom,A0),D0
+                ADD     (DialogTemplate.boundsRect.top,A1),D0
+                SUB     (DialogTemplate.boundsRect.bottom,A1),D0
+                EXT.L   D0
+                DIVS    #3,D0
+                SWAP    D0
+                MOVE    (screenBits.bounds.left,A0),D0
+                ADD     (screenBits.bounds.right,A0),D0
+                ADD     (DialogTemplate.boundsRect.left,A1),D0
+                SUB     (DialogTemplate.boundsRect.right,A1),D0
+                ASR     #1,D0
+                MOVE.L  D0,(Result,A6)
+Exit            UNLK    A6
+                MOVE.L  (SP)+,A0
+                ADDQ.L  #ParamSize,SP
+                JMP     (A0)
+
+                ENDF
+;———————————————————————————————————————————————————————————————
+; Routine name  GetSysVersion
+;
+; On exit       D0: system version (word)
+;———————————————————————————————————————————————————————————————
+GetSysVersion   FUNC    ENTRY
+
+Gestalt         EQU     $A1AD
+SysEnvirons     EQU     $A090
+
+StackFrame      RECORD  {A6Link},DECR
+RetAddr         DS.L    1
+A6Link          DS.L    1
+theWorld        DS      SysEnvRec
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame
+
+                LINK    A6,#LocalSize
+                MOVE.L  A0,-(SP)
+
+                MOVE    #Gestalt,D0
+                BSR     TrapAvailable
+                BEQ.S   @0
+
+                MOVE.L  #gestaltSystemVersion,D0
+                _Gestalt
+                BNE.S   @0
+                MOVE.L  A0,D0
+                BRA.S   Exit
+
+@0              MOVE    #SysEnvirons,D0
+                BSR     TrapAvailable
+                BEQ.S   @2
+
+                LEA     (theWorld,A6),A0
+                MOVEQ   #curSysEnvVers,D0
+                _SysEnvirons
+                BEQ.S   @1
+                CMP     #envVersTooBig,D0
+                BNE.S   @2
+                CMP     #1,(theWorld.environsVersion,A6)
+                BLT.S   @2
+@1              MOVE    (theWorld.systemVersion,A6),D0
+                BRA.S   Exit
+
+@2              MOVE    (SysVersion),D0
+
+Exit            MOVE.L  (SP)+,A0
+                UNLK    A6
+                RTS
+
+                ENDF
+;———————————————————————————————————————————————————————————————
+; FUNCTION CheckEnvirons : BOOLEAN;
+;———————————————————————————————————————————————————————————————
+CheckEnvirons   FUNC    ENTRY
+
+StackFrame      RECORD  {A6Link},DECR
+Result          DS      1
+RetAddr         DS.L    1
+A6Link          DS.L    1
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame
+
+                LINK    A6,#LocalSize
+                CLR     (Result,A6)
+                BSR     GetSysVersion
+                CMP     #$0420,D0
+                SHS     (Result,A6)
+Exit            UNLK    A6
+                RTS
+
+                ENDF
+;———————————————————————————————————————————————————————————————
+; Routine name  GetFindFolder
+;
+; On exit       D0: 0 if not present, or -1 if present (byte)
+;———————————————————————————————————————————————————————————————
+GetFindFolder   FUNC    ENTRY
+
+Gestalt         EQU     $A1AD
+
+                MOVE.L  A0,-(SP)
+
+                MOVE    #Gestalt,D0
+                BSR     TrapAvailable
+                BEQ.S   @0
+
+                MOVE.L  #gestaltFindFolderAttr,D0
+                _Gestalt
+                BNE.S   @0
+                MOVE.L  A0,D0
+                BTST    #gestaltFindFolderPresent,D0
+                SNE     D0
+                BRA.S   Exit
+
+@0              SF      D0
+
+Exit            MOVE.L  (SP)+,A0
+                TST.B   D0
+                RTS
+
+                ENDF
+;———————————————————————————————————————————————————————————————
+; Routine name  GetQDType
+;
+; On exit       D0: 0 if B/W QD, or -1 if color QD (byte)
+;———————————————————————————————————————————————————————————————
+GetQDType       FUNC    ENTRY
+
+Gestalt         EQU     $A1AD
+SysEnvirons     EQU     $A090
+
+StackFrame      RECORD  {A6Link},DECR
+RetAddr         DS.L    1
+A6Link          DS.L    1
+theWorld        DS      SysEnvRec
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame
+
+                LINK    A6,#LocalSize
+                MOVE.L  A0,-(SP)
+
+                MOVE    #Gestalt,D0
+                BSR     TrapAvailable
+                BEQ.S   @0
+
+                MOVE.L  #gestaltQuickdrawVersion,D0
+                _Gestalt
+                BNE.S   @0
+                MOVE.L  A0,D0
+                CMP     #gestalt8BitQD,D0
+                SHS     D0
+                BRA.S   Exit
+
+@0              MOVE    #SysEnvirons,D0
+                BSR     TrapAvailable
+                BEQ.S   @2
+
+                LEA     (theWorld,A6),A0
+                MOVEQ   #curSysEnvVers,D0
+                _SysEnvirons
+                BEQ.S   @1
+                CMP     #envVersTooBig,D0
+                BNE.S   @2
+                CMP     #1,(theWorld.environsVersion,A6)
+                BLT.S   @2
+@1              TST.B   (theWorld.hasColorQD,A6)
+                SNE     D0
+                BRA.S   Exit
+
+@2              CMP     #$3FFF,(ROM85)
+                SLS     D0
+
+Exit            MOVE.L  (SP)+,A0
+                UNLK    A6
+                TST.B   D0
+                RTS
+
+                ENDF
+;———————————————————————————————————————————————————————————————
+; FUNCTION GetBanner (globalRect: Rect) : PicHandle;
+;———————————————————————————————————————————————————————————————
+GetBanner       FUNC    ENTRY
+
+StackFrame      RECORD  {A6Link},DECR
+Result          DS.L    1
+ParamBegin      EQU     *
+globalRect      DS.L    1
+ParamSize       EQU     ParamBegin-*
+RetAddr         DS.L    1
+A6Link          DS.L    1
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame
+
+                LINK    A6,#LocalSize
+                BSR     GetQDType
+                BEQ.S   @1
+                SUBQ.L  #4,SP
+                MOVE.L  (globalRect,A6),-(SP)
+                _GetMaxDevice
+                MOVE.L  (SP)+,A0
+                MOVE.L  (A0),A0
+                MOVE.L  (GDevice.gdPMap,A0),A0
+                MOVE.L  (A0),A0
+                MOVE    (PixMap.pixelSize,A0),D0
+                CMP     #4,D0
+                BLO.S   @1
+                CMP     #8,D0
+                BLO.S   @0
+                SUBQ.L  #4,SP
+                MOVE    #-4046,-(SP)
+                _GetPicture
+                MOVE.L  (SP)+,D0
+                BNE.S   Exit
+@0              SUBQ.L  #4,SP
+                MOVE    #-4047,-(SP)
+                _GetPicture
+                MOVE.L  (SP)+,D0
+                BNE.S   Exit
+@1              SUBQ.L  #4,SP
+                MOVE    #-4048,-(SP)
+                _GetPicture
+                MOVE.L  (SP)+,D0
+Exit            MOVE.L  D0,(Result,A6)
+                UNLK    A6
+                MOVE.L  (SP)+,A0
+                ADDQ.L  #ParamSize,SP
+                JMP     (A0)
+
+                ENDF
+;———————————————————————————————————————————————————————————————
+; Routine name  GetAddrModeAttr
+;
+; On exit       D0: attributes (long word)
+;———————————————————————————————————————————————————————————————
+GetAddrModeAttr FUNC    ENTRY
+
+Gestalt         EQU     $A1AD
+
+                MOVE.L  A0,-(SP)
+
+                MOVE    #Gestalt,D0
+                BSR     TrapAvailable
+                BEQ.S   @0
+
+                MOVE.L  #gestaltAddressingModeAttr,D0
+                _Gestalt
+                BNE.S   @0
+                MOVE.L  A0,D0
+                BRA.S   Exit
+
+@0              MOVE.B  ($B73),D0
+                NOT.B   D0
+                AND.L   #$00000003,D0
+
+Exit            MOVE.L  (SP)+,A0
+                RTS
+
+                ENDF
+;———————————————————————————————————————————————————————————————
+; FUNCTION FindINIT : Ptr;
+;———————————————————————————————————————————————————————————————
+FindINIT        FUNC    ENTRY
+
+tybkMask        EQU     3       ; Mask for block type
+tybkFree        EQU     0       ; Free Block
+tybkNRel        EQU     1       ; Non-Relocatable
+tybkRel         EQU     2       ; Relocatable
+
+tagBC           EQU     0       ; Tag and Byte Count field [long]
+handle          EQU     4       ; back pointer to master pointer [pointer]
+blkData         EQU     8       ; data starts here
+
+StackFrame      RECORD  {A6Link},DECR
+Result          DS.L    1
+RetAddr         DS.L    1
+A6Link          DS.L    1
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame
+
+                LINK    A6,#LocalSize
+                CLR.L   (Result,A6)
+
+                BSR     GetAddrModeAttr
+                BTST    #gestalt32BitSysZone,D0
+                BNE.S   @2
+
+; 24-bit system zone
+
+                MOVE.L  (SysZone),A0
+                MOVE.L  (Zone.bkLim,A0),A1
+                LEA     (Zone.heapData,A0),A0
+@0              CMP.L   A1,A0
+                BHS     Exit
+                MOVE.B  (tagBC,A0),D0
+                LSR.B   #6,D0
+                CMP.B   #tyBkNRel,D0
+                BNE.S   @1
+                CMP.L   #'INIT',(blkData+4,A0)
+                BNE.S   @1
+                CMP     #128,(blkData+8,A0)
+                BNE.S   @1
+                CMP.L   #'Capt',(blkData+12,A0)
+                BNE.S   @1
+                CMP     #$0460,(blkData+10,A0)
+                BNE.S   @1
+                ADDQ.L  #blkData,A0
+                MOVE.L  A0,(Result,A6)
+                BRA.S   Exit
+@1              MOVE.L  (tagBC,A0),D0
+                AND.L   #$00FFFFFF,D0
+                ADD.L   D0,A0
+                BRA.S   @0
+
+; 32-bit system zone
+
+@2              MOVE.L  (SysZone),A0
+                MOVE.L  (Zone.bkLim,A0),A1
+                LEA     (Zone.heapData,A0),A0
+@3              CMP.L   A1,A0
+                BHS.S   Exit
+                MOVE.B  (A0),D0
+                LSR.B   #6,D0
+                CMP.B   #tyBkNRel,D0
+                BNE.S   @4
+                CMP.L   #'INIT',(12+4,A0)
+                BNE.S   @4
+                CMP     #128,(12+8,A0)
+                BNE.S   @4
+                CMP.L   #'Capt',(12+12,A0)
+                BNE.S   @4
+                CMP     #$0460,(12+10,A0)
+                BNE.S   @4
+                ADD     #12,A0
+                MOVE.L  A0,(Result,A6)
+                BRA.S   Exit
+@4              ADD.L   (4,A0),A0
+                BRA.S   @3
+
+Exit            UNLK    A6
+                RTS
+
+                ENDF
+;———————————————————————————————————————————————————————————————
+; PROCEDURE AdjustPopupBox (theDialog: DialogPtr; itemNo: INTEGER; menuID: INTEGER);
+;———————————————————————————————————————————————————————————————
+AdjustPopupBox  PROC    ENTRY
+
+StackFrame      RECORD  {A6Link},DECR
+ParamBegin      EQU     *
+theDialog       DS.L    1
+itemNo          DS      1
+menuID          DS      1
+ParamSize       EQU     ParamBegin-*
+RetAddr         DS.L    1
+A6Link          DS.L    1
+rect1           DS      Rect
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame
+
+                LINK    A6,#LocalSize
+                MOVEM.L D7/A4,-(SP)
+                MOVE.L  (theDialog,A6),-(SP)
+                MOVE    (itemNo,A6),-(SP)
+                PEA     (rect1,A6)
+                BSR     GetIBox
+                SUBQ.L  #4,SP
+                MOVE    (menuID,A6),-(SP)
+                _GetMenu
+                MOVE.L  (SP)+,A4
+                MOVE.L  A4,-(SP)
+                _CalcMenuSize
+                MOVE.L  (A4),A0
+                MOVE    (MenuInfo.menuWidth,A0),D7
+                ADD     #14,D7                  ; for triangle
+                MOVE.L  A4,-(SP)
+                _ReleaseResource
+                ADD     (rect1.left,A6),D7
+                MOVE    D7,(rect1.right,A6)
+                MOVE.L  (theDialog,A6),-(SP)
+                MOVE    (itemNo,A6),-(SP)
+                PEA     (rect1,A6)
+                BSR     SetIBox
+Exit            MOVEM.L (SP)+,D7/A4
+                UNLK    A6
+                MOVE.L  (SP)+,A0
+                ADDQ.L  #ParamSize,SP
+                JMP     (A0)
+
+                ENDP
+;———————————————————————————————————————————————————————————————
+; PROCEDURE DrawPopupTitle (theDialog: DialogPtr; itemNo: INTEGER; strListID: INTEGER;
+;                           index: INTEGER);
+;———————————————————————————————————————————————————————————————
+DrawPopupTitle  PROC    ENTRY
+
+                IMPORT  GetIndString
+
+StackFrame      RECORD  {A6Link},DECR
+ParamBegin      EQU     *
+theDialog       DS.L    1
+itemNo          DS      1
+strListID       DS      1
+index           DS      1
+ParamSize       EQU     ParamBegin-*
+RetAddr         DS.L    1
+A6Link          DS.L    1
+rect1           DS      Rect
+info            DS      FontInfo
+txState         DS      TextState
+pnState         DS      PenState
+theString       DS.B    256
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame
+
+                LINK    A6,#LocalSize
+                MOVE.L  A4,-(SP)
+                MOVE.L  (theDialog,A6),-(SP)
+                MOVE    (itemNo,A6),-(SP)
+                PEA     (rect1,A6)
+                BSR     GetIBox
+                SUBQ.L  #4,SP
+                _NewRgn
+                MOVE.L  (SP)+,A4
+                MOVE.L  A4,-(SP)
+                _GetClip
+                PEA     (rect1,A6)
+                _ClipRect
+                PEA     (pnState,A6)
+                _GetPenState
+                _PenNormal
+                PEA     (rect1,A6)
+                _EraseRect
+                PEA     (txState,A6)
+                BSR     GetTextState
+                MOVE    (SysFontFam),-(SP)
+                _TextFont
+                MOVE    (SysFontSize),-(SP)
+                _TextSize
+                MOVE    #0,-(SP)
+                _TextFace
+                MOVE    #srcOr,-(SP)
+                _TextMode
+                PEA     (info,A6)
+                _GetFontInfo
+                MOVE    #4,-(SP)
+                MOVE    (info.ascent,A6),-(SP)
+                PEA     (rect1.topLeft,A6)
+                _AddPt
+                MOVE.L  (rect1.topLeft,A6),-(SP)
+                _MoveTo
+                PEA     (theString,A6)
+                MOVE    (strListID,A6),-(SP)
+                MOVE    (index,A6),-(SP)
+                BSR     GetIndString
+                PEA     (theString,A6)
+                _DrawString
+                PEA     (txState,A6)
+                BSR     SetTextState
+                PEA     (pnState,A6)
+                _SetPenState
+                MOVE.L  A4,-(SP)
+                _SetClip
+                MOVE.L  A4,-(SP)
+                _DisposeRgn
+Exit            MOVE.L  (SP)+,A4
+                UNLK    A6
+                MOVE.L  (SP)+,A0
+                ADD     #ParamSize,SP
+                JMP     (A0)
+
+                ENDP
+;———————————————————————————————————————————————————————————————
+; PROCEDURE DrawPopupBox (theDialog: DialogPtr; itemNo: INTEGER; menuID: INTEGER; item: INTEGER);
+;———————————————————————————————————————————————————————————————
+DrawPopupBox    PROC    ENTRY
+
+StackFrame      RECORD  {A6Link},DECR
+ParamBegin      EQU     *
+theDialog       DS.L    1
+itemNo          DS      1
+menuID          DS      1
+item            DS      1
+ParamSize       EQU     ParamBegin-*
+RetAddr         DS.L    1
+A6Link          DS.L    1
+loc             DS      Point
+rect1           DS      Rect
+rect2           DS      Rect
+info            DS      FontInfo
+txState         DS      TextState
+pnState         DS      PenState
+itemString      DS.B    256
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame
+
+                LINK    A6,#LocalSize
+                MOVEM.L A3/A4,-(SP)
+                MOVE.L  (theDialog,A6),-(SP)
+                MOVE    (itemNo,A6),-(SP)
+                PEA     (rect1,A6)
+                BSR     GetIBox
+                MOVE.L  (rect1.topLeft,A6),(rect2.topLeft,A6)
+                MOVE.L  (rect1.botRight,A6),(rect2.botRight,A6)
+                MOVE.L  #$00010001,-(SP)
+                PEA     (rect2.topLeft,A6)
+                _SubPt
+                MOVE.L  #$00020002,-(SP)
+                PEA     (rect2.botRight,A6)
+                _AddPt
+                SUBQ.L  #4,SP
+                _NewRgn
+                MOVE.L  (SP)+,A4
+                MOVE.L  A4,-(SP)
+                _GetClip
+                PEA     (rect2,A6)
+                _ClipRect
+                PEA     (pnState,A6)
+                _GetPenState
+                _PenNormal
+                PEA     (rect2,A6)
+                _EraseRect
+                PEA     (txState,A6)
+                BSR     GetTextState
+                MOVE    (SysFontFam),-(SP)
+                _TextFont
+                MOVE    (SysFontSize),-(SP)
+                _TextSize
+                MOVE    #0,-(SP)
+                _TextFace
+                MOVE    #srcOr,-(SP)
+                _TextMode
+                PEA     (info,A6)
+                _GetFontInfo
+                MOVE.L  (rect1.topLeft,A6),(loc,A6)
+                MOVE    #14,-(SP)
+                MOVE    (info.ascent,A6),-(SP)
+                PEA     (loc,A6)
+                _AddPt
+                MOVE.L  (loc,A6),-(SP)
+                _MoveTo
+                SUBQ.L  #4,SP
+                MOVE    (menuID,A6),-(SP)
+                _GetMenu
+                MOVE.L  (SP)+,A3
+                MOVE.L  A3,-(SP)
+                MOVE    (item,A6),-(SP)
+                PEA     (itemString,A6)
+                _GetMenuItemText
+                MOVE.L  A3,-(SP)
+                _ReleaseResource
+                PEA     (itemString,A6)
+                _DrawString
+                PEA     (txState,A6)
+                BSR     SetTextState
+                MOVE    (rect1.top,A6),(loc.v,A6)
+                MOVE    (rect1.right,A6),(loc.h,A6)
+                MOVE.L  #$0005FFEF,-(SP)
+                PEA     (loc,A6)
+                _AddPt
+                SUBQ.L  #4,SP
+                _OpenPoly
+                MOVE.L  (SP)+,A3
+                MOVE.L  (loc,A6),-(SP)
+                _MoveTo
+                MOVE    #12,-(SP)
+                MOVE    #0,-(SP)
+                _Line
+                MOVE    #-6,-(SP)
+                MOVE    #6,-(SP)
+                _Line
+                MOVE    #-6,-(SP)
+                MOVE    #-6,-(SP)
+                _Line
+                _ClosePoly
+                MOVE.L  A3,-(SP)
+                _PaintPoly
+                MOVE.L  A3,-(SP)
+                _KillPoly
+                PEA     (rect1,A6)
+                MOVE    #-1,-(SP)
+                MOVE    #-1,-(SP)
+                _InsetRect
+                PEA     (rect1,A6)
+                _FrameRect
+                MOVE.L  #$00030003,-(SP)
+                PEA     (rect1.topLeft,A6)
+                _AddPt
+                MOVE    (rect1.right,A6),-(SP)
+                MOVE    (rect1.top,A6),-(SP)
+                _MoveTo
+                MOVE    (rect1.right,A6),-(SP)
+                MOVE    (rect1.bottom,A6),-(SP)
+                _LineTo
+                MOVE    (rect1.left,A6),-(SP)
+                MOVE    (rect1.bottom,A6),-(SP)
+                _LineTo
+                PEA     (pnState,A6)
+                _SetPenState
+                MOVE.L  A4,-(SP)
+                _SetClip
+                MOVE.L  A4,-(SP)
+                _DisposeRgn
+Exit            MOVEM.L (SP)+,A3/A4
+                UNLK    A6
+                MOVE.L  (SP)+,A0
+                ADD     #ParamSize,SP
+                JMP     (A0)
+
+                ENDP
+;———————————————————————————————————————————————————————————————
+; PROCEDURE GetConfig (VAR config: cnfgRec);
+;———————————————————————————————————————————————————————————————
+GetConfig       PROC    ENTRY
+
+StackFrame      RECORD  {A6Link},DECR
+ParamBegin      EQU     *
+config          DS.L    1
+ParamSize       EQU     ParamBegin-*
+RetAddr         DS.L    1
+A6Link          DS.L    1
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame,cnfgRec
+
+                LINK    A6,#LocalSize
+                SUBQ.L  #4,SP
+                BSR     FindINIT
+                MOVE.L  (SP)+,D0
+                BEQ.S   @0
+                MOVE.L  D0,A0
+                MOVE.L  (A0),A0
+                MOVE.L  (config,A6),A1
+                MOVE.L  #cnfgSize,D0
+                _BlockMove
+                BEQ     Exit
+@0              SUBQ.L  #4,SP
+                MOVE.L  #'CNFG',-(SP)
+                MOVE    #-4048,-(SP)
+                _Get1Resource
+                MOVE.L  (SP)+,D0
+                BEQ.S   @1
+                MOVE.L  D0,A0
+                MOVE.L  (A0),D0
+                BEQ.S   @1
+                MOVE.L  D0,A0
+                MOVE.L  (config,A6),A1
+                MOVE.L  #cnfgSize,D0
+                _BlockMove
+                BEQ.S   Exit
+@1              MOVE.L  (config,A6),A0
+                MOVE    #$A000,(options,A0)
+                MOVE    #$0314,(keyCode,A0)
+                MOVE    #100,(scale,A0)
+                MOVE    #0,(delay,A0)
+                MOVE    #0,(area,A0)
+                MOVE    #0,(format,A0)
+                MOVE.L  #0,(dirID,A0)
+                CLR.B   (volName,A0)
+                MOVE.L  #'CapV',(applPICT.creator,A0)
+                CLR.B   (applPICT.fileName,A0)
+                MOVE.L  #'CapV',(applTIFF5.creator,A0)
+                CLR.B   (applTIFF5.fileName,A0)
+                MOVE.L  #'CapV',(applTIFF4.creator,A0)
+                CLR.B   (applTIFF4.fileName,A0)
+                MOVE.L  #'CapV',(applGIF87.creator,A0)
+                CLR.B   (applGIF87.fileName,A0)
+                MOVE.L  #'CapV',(applPaint.creator,A0)
+                CLR.B   (applPaint.fileName,A0)
+Exit            UNLK    A6
+                MOVE.L  (SP)+,A0
+                ADDQ.L  #ParamSize,SP
+                JMP     (A0)
+
+                ENDP
+;———————————————————————————————————————————————————————————————
+; PROCEDURE PutConfig (config: cnfgRec);
+;———————————————————————————————————————————————————————————————
+PutConfig       PROC    ENTRY
+
+StackFrame      RECORD  {A6Link},DECR
+ParamBegin      EQU     *
+config          DS.L    1
+ParamSize       EQU     ParamBegin-*
+RetAddr         DS.L    1
+A6Link          DS.L    1
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame,cnfgRec
+
+                LINK    A6,#LocalSize
+                SUBQ.L  #4,SP
+                BSR     FindINIT
+                MOVE.L  (SP)+,D0
+                BEQ.S   @0
+                MOVE.L  D0,A1
+                MOVE.L  (A1),A1
+                MOVE.L  (config,A6),A0
+                MOVE.L  #cnfgSize,D0
+                _BlockMove
+@0              SUBQ.L  #4,SP
+                MOVE.L  #'CNFG',-(SP)
+                MOVE    #-4048,-(SP)
+                _Get1Resource
+                MOVE.L  (SP)+,D0
+                BEQ.S   Exit
+                MOVE.L  A2,-(SP)
+                MOVE.L  D0,A2
+                MOVE.L  (A2),D0
+                BEQ.S   @1
+                MOVE.L  D0,A1
+                MOVE.L  (config,A6),A0
+                MOVE.L  #cnfgSize,D0
+                _BlockMove
+                BNE.S   @1
+                MOVE.L  A2,-(SP)
+                _ChangedResource
+                MOVE.L  A2,-(SP)
+                _WriteResource
+@1              MOVE.L  (SP)+,A2
+Exit            UNLK    A6
+                MOVE.L  (SP)+,A0
+                ADDQ.L  #ParamSize,SP
+                JMP     (A0)
+
+                ENDP
+;———————————————————————————————————————————————————————————————
+; FUNCTION GetKey : INTEGER;
+;———————————————————————————————————————————————————————————————
+GetKey          FUNC    ENTRY
+
+                IMPORT  GetIndString
+
+StackFrame      RECORD  {A6Link},DECR
+Result          DS      1
+RetAddr         DS.L    1
+A6Link          DS.L    1
+savePort        DS.L    1
+box             DS      Rect
+theEvent        DS      EventRecord
+text            DS.B    256
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame
+
+                LINK    A6,#LocalSize
+                MOVEM.L D3-D7/A2-A4,-(SP)
+
+                MOVE    #-4048,-(SP)
+                BSR     CenterWindow
+                SUBQ.L  #4,SP
+                MOVE    #-4048,-(SP)
+                MOVE.L  #NIL,-(SP)
+                PEA     (-1)
+                _GetNewWindow
+                MOVE.L  (SP)+,D0
+                BEQ     Exit
+                MOVE.L  D0,A4
+                PEA     (savePort,A6)
+                _GetPort
+                MOVE.L  A4,-(SP)
+                _SetPort
+                MOVE    (SysFontFam),-(SP)
+                _TextFont
+                MOVE    (SysFontSize),-(SP)
+                _TextSize
+                MOVE    #0,-(SP)
+                _TextFace
+                MOVE    #srcOr,-(SP)
+                _TextMode
+                PEA     (text,A6)
+                MOVE    #-4047,-(SP)
+                MOVE    #3,-(SP)
+                BSR     GetIndString
+                MOVE.L  (GrafPort.portRect.topLeft,A4),(box.topLeft,A6)
+                MOVE.L  (GrafPort.portRect.botRight,A4),(box.botRight,A6)
+                PEA     (box,A6)
+                MOVE    #20,-(SP)
+                MOVE    #10,-(SP)
+                _InsetRect
+                LEA     (text,A6),A0
+                MOVEQ   #0,D0
+                MOVE.B  (A0)+,D0
+                MOVE.L  A0,-(SP)
+                MOVE.L  D0,-(SP)
+                PEA     (box,A6)
+                MOVE    (TESysJust),-(SP)               ; GetSysJust
+                _TETextBox
+                MOVE    #arrowCursor,-(SP)
+                BSR     SetCursor
+@0              LEA     (theEvent,A6),A0
+                MOVEQ   #$3F,D0
+                _GetOSEvent
+                TST.B   D0
+                BNE.S   @0
+                MOVE    (theEvent.what,A6),D0
+                CMP     #mouseDown,D0
+                BNE.S   @1
+                MOVE    #-1,(Result,A6)
+                BRA.S   @2
+@1              CMP     #keyDown,D0
+                BNE.S   @0
+                MOVE    (theEvent.modifiers,A6),D0
+                MOVE.L  (theEvent.message,A6),D1
+                LSR     #8,D1
+                MOVE.B  D1,D0
+                AND     #$1B7F,D0
+                MOVE    D0,(Result,A6)
+@2              MOVE    #watchCursor,-(SP)
+                BSR     SetCursor
+                MOVE.L  (savePort,A6),-(SP)
+                _SetPort
+                MOVE.L  A4,-(SP)
+                _DisposeWindow
+
+Exit            MOVEM.L (SP)+,D3-D7/A2-A4
+                UNLK    A6
+                RTS
+
+                ENDF
+;———————————————————————————————————————————————————————————————
+; PROCEDURE GetKeyString (VAR theString: Str255; keyCode: INTEGER);
+;———————————————————————————————————————————————————————————————
+GetKeyString    PROC    ENTRY
+
+                IMPORT  GetIndString
+
+StackFrame      RECORD  {A6Link},DECR
+ParamBegin      EQU     *
+theString       DS.L    1
+keyCode         DS      1
+ParamSize       EQU     ParamBegin-*
+RetAddr         DS.L    1
+A6Link          DS.L    1
+state           DS.L    1
+s               DS.B    256
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame
+
+                LINK    A6,#LocalSize
+                MOVEM.L D3-D7/A2-A4,-(SP)
+
+                MOVE.L  (theString,A6),A4
+                MOVE    (keyCode,A6),D7
+
+                CLR.B   (A4)
+                BTST    #controlKeyBit,D7
+                BEQ.S   @0
+                PEA     (s,A6)
+                MOVE    #-4046,-(SP)
+                MOVE    #1,-(SP)
+                BSR     GetIndString
+                MOVE.L  A4,-(SP)
+                PEA     (s,A6)
+                MOVE.L  A4,-(SP)
+                MOVE    #2,-(SP)
+                BSR     Concat
+@0              BTST    #shiftKeyBit,D7
+                BEQ.S   @1
+                PEA     (s,A6)
+                MOVE    #-4046,-(SP)
+                MOVE    #2,-(SP)
+                BSR     GetIndString
+                MOVE.L  A4,-(SP)
+                PEA     (s,A6)
+                MOVE.L  A4,-(SP)
+                MOVE    #2,-(SP)
+                BSR     Concat
+@1              BTST    #optionKeyBit,D7
+                BEQ.S   @2
+                PEA     (s,A6)
+                MOVE    #-4046,-(SP)
+                MOVE    #3,-(SP)
+                BSR     GetIndString
+                MOVE.L  A4,-(SP)
+                PEA     (s,A6)
+                MOVE.L  A4,-(SP)
+                MOVE    #2,-(SP)
+                BSR     Concat
+@2              BTST    #cmdKeyBit,D7
+                BEQ.S   @3
+                PEA     (s,A6)
+                MOVE    #-4046,-(SP)
+                MOVE    #4,-(SP)
+                BSR     GetIndString
+                MOVE.L  A4,-(SP)
+                PEA     (s,A6)
+                MOVE.L  A4,-(SP)
+                MOVE    #2,-(SP)
+                BSR     Concat
+
+@3              AND     #$007F,D7
+
+                MOVE    D7,D0
+                ADDQ    #1,D0
+                PEA     (s,A6)
+                MOVE    #-4048,-(SP)
+                MOVE    D0,-(SP)
+                BSR     GetIndString
+                TST.B   (s,A6)
+                BNE.S   @6
+                SUBQ.L  #4,SP
+                MOVE    #smKeyScript,-(SP)
+                _GetScriptManagerVariable
+                MOVE.L  (SP)+,D0
+                SUBQ.L  #4,SP
+                MOVE    D0,-(SP)
+                MOVE    #smScriptKeys,-(SP)
+                _GetScriptVariable
+                MOVE.L  (SP)+,D0
+                SUBQ.L  #4,SP
+                MOVE.L  #'KCHR',-(SP)
+                MOVE    D0,-(SP)
+                _GetResource
+                MOVE.L  (SP)+,D0
+                BEQ.S   Exit
+                MOVE.L  D0,A0
+                MOVE    D7,D0
+                OR      #$0080,D0
+                CLR.L   (state,A6)
+                SUBQ.L  #4,SP
+                MOVE.L  (A0),-(SP)
+                MOVE    D0,-(SP)
+                PEA     (state,A6)
+                _KeyTranslate
+                MOVE.L  (SP)+,D0
+                LEA     (s,A6),A0
+                CLR.B   (A0)+
+                MOVE.L  A0,A1
+                SWAP    D0
+                TST.B   D0
+                BEQ.S   @4
+                BSR.S   UprChar
+                MOVE.B  D0,(A1)+
+@4              SWAP    D0
+                TST.B   D0
+                BEQ.S   @5
+                BSR.S   UprChar
+                MOVE.B  D0,(A1)+
+@5              MOVE.L  A1,D0
+                SUB.L   A0,D0
+                MOVE.B  D0,-(A0)
+@6              MOVE.L  A4,-(SP)
+                PEA     (s,A6)
+                MOVE.L  A4,-(SP)
+                MOVE    #2,-(SP)
+                BSR     Concat
+
+Exit            MOVEM.L (SP)+,D3-D7/A2-A4
+                UNLK    A6
+                MOVE.L  (SP)+,A0
+                ADDQ.L  #ParamSize,SP
+                JMP     (A0)
+
+UprChar         CMP.B   #'a',D0
+                BLO.S   @0
+                CMP.B   #'z',D0
+                BHI.S   @0
+                SUB.B   #'a'-'A',D0
+@0              RTS
+
+                ENDP
+;———————————————————————————————————————————————————————————————
+; FUNCTION SFDirFilter (paramBlock: ParmBlkPtr) : BOOLEAN;
+;———————————————————————————————————————————————————————————————
+SFDirFilter     FUNC    ENTRY
+
+StackFrame      RECORD  {RetAddr},DECR
+Result          DS      1
+paramBlock      DS.L    1
+RetAddr         DS.L    1
+                ENDR
+
+                WITH    StackFrame
+
+                MOVE.L  (paramBlock,SP),A0
+                BTST    #4,(ParamBlockRec.ioFlAttrib,A0)
+                SEQ     (Result,SP)
+                MOVE.L  (SP)+,(SP)
+                RTS
+
+                ENDF
+;———————————————————————————————————————————————————————————————
+; FUNCTION SFDirHook (theItem: INTEGER; theDialog: DialogPtr) : INTEGER;
+;———————————————————————————————————————————————————————————————
+SFDirHook       FUNC    ENTRY
+
+                ENTRY   replyPtr
+
+StackFrame      RECORD  {A6Link},DECR
+Result          DS      1
+ParamBegin      EQU     *
+theItem         DS      1
+theDialog       DS.L    1
+ParamSize       EQU     ParamBegin-*
+RetAddr         DS.L    1
+A6Link          DS.L    1
+itemType        DS      1
+item            DS.L    1
+box             DS.B    8
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame
+
+                LINK    A6,#LocalSize
+                MOVEM.L D7/A3,-(SP)
+                MOVE.L  (theDialog,A6),A3
+                MOVE    (theItem,A6),D7
+                CMP     #-1,D7
+                BNE.S   @0
+                MOVE.L  A3,-(SP)
+                MOVE    #11,-(SP)
+                PEA     (itemType,A6)
+                PEA     (item,A6)
+                PEA     (box,A6)
+                _GetDialogItem
+                MOVE.L  (item,A6),-(SP)
+                MOVE    #255,-(SP)
+                _HiliteControl
+                BRA.S   Exit
+@0              CMP     #11,D7
+                BNE.S   @1
+                MOVE    #getOpen,D7
+                BRA.S   Exit
+@1              CMP     #100,D7
+                BNE.S   Exit
+                MOVE.L  A3,-(SP)
+                MOVE    #11,-(SP)
+                PEA     (itemType,A6)
+                PEA     (item,A6)
+                PEA     (box,A6)
+                _GetDialogItem
+                MOVE.L  (item,A6),-(SP)
+                MOVE.L  (replyPtr,PC),A0
+                TST.L   (SFReply.fType,A0)
+                BNE.S   @2
+                MOVE    #255,-(SP)
+                BRA.S   @3
+@2              MOVE    #0,-(SP)
+@3              _HiliteControl
+Exit            MOVE    D7,(Result,A6)
+                MOVEM.L (SP)+,D7/A3
+                UNLK    A6
+                MOVE.L  (SP)+,A0
+                ADDQ.L  #ParamSize,SP
+                JMP     (A0)
+
+replyPtr        DC.L    0
+
+                ENDF
+;———————————————————————————————————————————————————————————————
+; PROCEDURE GetFolder (volName: StringPtr; VAR dirID: LONGINT);
+;———————————————————————————————————————————————————————————————
+GetFolder       PROC    ENTRY
+
+                IMPORT  GetIndString
+
+StackFrame      RECORD  {A6Link},DECR
+ParamBegin      EQU     *
+volName         DS.L    1
+dirID           DS.L    1
+ParamSize       EQU     ParamBegin-*
+RetAddr         DS.L    1
+A6Link          DS.L    1
+reply           DS      SFReply
+paramBlock      DS      HParamBlockRec
+prompt          DS.B    256
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame
+
+                LINK    A6,#LocalSize
+                LEA     (replyPtr,PC),A1
+                LEA     (reply,A6),A0
+                MOVE.L  A0,(A1)
+                MOVE    #arrowCursor,-(SP)
+                BSR     SetCursor
+                PEA     (prompt,A6)
+                MOVE    #-4047,-(SP)
+                MOVE    #4,-(SP)
+                BSR     GetIndString
+                SUBQ.L  #4,SP
+                MOVE    #-4048,-(SP)
+                BSR     CenterSF
+                PEA     (prompt,A6)
+                PEA     (SFDirFilter,PC)
+                MOVE    #-1,-(SP)
+                MOVE.L  #NIL,-(SP)
+                PEA     (SFDirHook,PC)
+                PEA     (reply,A6)
+                MOVE    #-4048,-(SP)
+                MOVE.L  #NIL,-(SP)
+                _SFPGetFile
+                MOVE    #watchCursor,-(SP)
+                BSR     SetCursor
+                TST.B   (reply.good,A6)
+                BEQ.S   Exit
+                MOVE.L  (dirID,A6),A0
+                MOVE.L  (reply.fType,A6),(A0)
+                LEA     (paramBlock,A6),A0
+                MOVE.L  (volName,A6),(HParamBlockRec.ioNamePtr,A0)
+                MOVE    (reply.vRefNum,A6),(HParamBlockRec.ioVRefNum,A0)
+                MOVE    #0,(HParamBlockRec.ioVolIndex,A0)
+                _PBHGetVInfoSync
+                BEQ.S   Exit
+                MOVE.L  (volName,A6),A0
+                CLR.B   (A0)
+                MOVE.L  (dirID,A6),A0
+                MOVE.L  #0,(A0)
+Exit            UNLK    A6
+                MOVE.L  (SP)+,A0
+                ADDQ.L  #ParamSize,SP
+                JMP     (A0)
+
+                ENDP
+;———————————————————————————————————————————————————————————————
+; FUNCTION GetDirName (volName: StringPtr; dirID: LONGINT; dirName: StringPtr) : OSErr;
+;———————————————————————————————————————————————————————————————
+GetDirName      FUNC    ENTRY
+
+StackFrame      RECORD  {A6Link},DECR
+Result          DS      1
+ParamBegin      EQU     *
+volName         DS.L    1
+dirID           DS.L    1
+dirName         DS.L    1
+ParamSize       EQU     ParamBegin-*
+RetAddr         DS.L    1
+A6Link          DS.L    1
+volume          DS      1
+folder          DS.L    1
+s               DS.B    32
+paramBlock      DS      HParamBlockRec
+LocalSize       EQU     *
+                ENDR
+
+                WITH    Globals,StackFrame
+
+                LINK    A6,#LocalSize
+
+                MOVE.L  (volName,A6),A0
+                TST.B   (A0)
+                BEQ.S   @0
+
+                MOVE.L  (volName,A6),-(SP)
+                PEA     #':'
+                PEA     (s,A6)
+                MOVE    #2,-(SP)
+                BSR     Concat
+
+                LEA     (paramBlock,A6),A0
+                LEA     (s,A6),A1
+                MOVE.L  A1,(HParamBlockRec.ioNamePtr,A0)
+                MOVE    #0,(HParamBlockRec.ioVRefNum,A0)
+                MOVE    #-1,(HParamBlockRec.ioVolIndex,A0)
+                _PBHGetVInfoSync
+                BNE.S   @0
+                MOVE.L  (dirName,A6),(CInfoPBRec.ioNamePtr,A0)
+                MOVE    #-1,(CInfoPBRec.ioFDirIndex,A0)
+                MOVE.L  (dirID,A6),(CInfoPBRec.ioDrDirID,A0)
+                _PBGetCatInfoSync
+                BEQ.S   Exit
+
+@0              TST.B   (hasFindFolder,A4)
+                BEQ.S   @1
+
+                SUBQ.L  #2,SP
+                MOVE    #kOnSystemDisk,-(SP)
+                MOVE.L  #kDesktopFolderType,-(SP)
+                MOVE.B  #kDontCreateFolder,-(SP)
+                PEA     (volume,A6)
+                PEA     (folder,A6)
+                _FindFolder
+                TST     (SP)+
+                BNE.S   @1
+                LEA     (paramBlock,A6),A0
+                MOVE.L  (dirName,A6),(CInfoPBRec.ioNamePtr,A0)
+                MOVE    (volume,A6),(CInfoPBRec.ioVRefNum,A0)
+                MOVE    #-1,(CInfoPBRec.ioFDirIndex,A0)
+                MOVE.L  (folder,A6),(CInfoPBRec.ioDrDirID,A0)
+                _PBGetCatInfoSync
+                BEQ.S   Exit
+
+@1              LEA     (paramBlock,A6),A0
+                MOVE.L  #NIL,(HParamBlockRec.ioNamePtr,A0)
+                MOVE    (BootDrive),(HParamBlockRec.ioVRefNum,A0)
+                MOVE    #0,(HParamBlockRec.ioVolIndex,A0)
+                _PBHGetVInfoSync
+                BNE.S   Exit
+                MOVE.L  (dirName,A6),(CInfoPBRec.ioNamePtr,A0)
+                MOVE    #-1,(CInfoPBRec.ioFDirIndex,A0)
+                MOVE.L  #fsRtDirID,(CInfoPBRec.ioDrDirID,A0)
+                _PBGetCatInfoSync
+
+Exit            MOVE    D0,(Result,A6)
+                UNLK    A6
+                MOVE.L  (SP)+,A0
+                ADD     #ParamSize,SP
+                JMP     (A0)
+
+                ENDF
+;———————————————————————————————————————————————————————————————
+; PROCEDURE GetAppl (applName: Str31; VAR creator: OSType);
+;———————————————————————————————————————————————————————————————
+GetAppl         PROC    ENTRY
+
+                IMPORT  GetIndString
+
+StackFrame      RECORD  {A6Link},DECR
+ParamBegin      EQU     *
+applName        DS.L    1
+creator         DS.L    1
+ParamSize       EQU     ParamBegin-*
+RetAddr         DS.L    1
+A6Link          DS.L    1
+reply           DS      SFReply
+paramBlock      DS      HParamBlockRec
+prompt          DS.B    256
+LocalSize       EQU     *
+                ENDR
+
+                WITH    StackFrame
+
+                LINK    A6,#LocalSize
+                MOVE    #arrowCursor,-(SP)
+                BSR     SetCursor
+                PEA     (prompt,A6)
+                MOVE    #-4047,-(SP)
+                MOVE    #5,-(SP)
+                BSR     GetIndString
+                SUBQ.L  #4,SP
+                MOVE    #-4047,-(SP)
+                BSR     CenterSF
+                PEA     (prompt,A6)
+                MOVE.L  #NIL,-(SP)
+                MOVE    #1,-(SP)
+                PEA     #('APPL')
+                MOVE.L  #NIL,-(SP)
+                PEA     (reply,A6)
+                MOVE    #-4047,-(SP)
+                MOVE.L  #NIL,-(SP)
+                _SFPGetFile
+                MOVE    #watchCursor,-(SP)
+                BSR     SetCursor
+                TST.B   (reply.good,A6)
+                BEQ.S   Exit
+                LEA     (paramBlock,A6),A0
+                LEA     (reply.fName,A6),A1
+                MOVE.L  A1,(HParamBlockRec.ioNamePtr,A0)
+                MOVE    (reply.vRefNum,A6),(HParamBlockRec.ioVRefNum,A0)
+                CLR.B   (HParamBlockRec.ioFVersNum,A0)
+                MOVE    #0,(HParamBlockRec.ioFDirIndex,A0)
+                MOVE.L  #0,(HParamBlockRec.ioDirID,A0)
+                _PBHGetFInfoSync
+                BNE.S   Exit
+                MOVE.L  (creator,A6),A1
+                MOVE.L  (HParamBlockRec.ioFlFndrInfo.fdCreator,A0),(A1)
+                MOVE.L  (applName,A6),A1
+                LEA     (reply.fName,A6),A0
+                CLR     D0
+                MOVE.B  (A0),D0
+                CMP     #31,D0
+                BLS.S   @0
+                MOVEQ   #31,D0
+@0              MOVE.B  (A0)+,(A1)+
+                DBRA    D0,@0
+Exit            UNLK    A6
+                MOVE.L  (SP)+,A0
+                ADDQ.L  #ParamSize,SP
+                JMP     (A0)
+
+                ENDP
+;———————————————————————————————————————————————————————————————
+; FUNCTION cdev (message, item, numItems, CPanelID: INTEGER; VAR theEvent: EventRecord;
+;                cdevStorage: Handle; CPDialog: DialogPtr) : Handle;
+;———————————————————————————————————————————————————————————————
+cdev            FUNC    ENTRY
+
+StackFrame      RECORD  {A6Link},DECR
+Result          DS.L    1
+ParamBegin      EQU     *
+message         DS      1
+item            DS      1
+numItems        DS      1
+CPanelID        DS      1
+theEvent        DS.L    1
+cdevStorage     DS.L    1
+CPDialog        DS.L    1
+ParamSize       EQU     ParamBegin-*
+RetAddr         DS.L    1
+A6Link          DS.L    1
+refNum          DS      1
+loc             DS.L    1
+box             DS      Rect
+info            DS      FontInfo
+txState         DS      TextState
+text            DS.B    256
+LocalSize       EQU     *
+                ENDR
+
+                WITH    Globals,StackFrame
+
+                LINK    A6,#LocalSize
+                MOVEM.L D3-D7/A2-A4,-(SP)
+
+                TST.L   (cdevStorage,A6)
+                BEQ     Exit
+                MOVE    (message,A6),D0
+
+Mac             CMP     #macDev,D0
+                BNE.S   Init
+
+                SUBQ.L  #2,SP
+                BSR     CheckEnvirons
+                TST.B   (SP)+
+                BNE.S   @0
+                MOVE.L  #0,(cdevStorage,A6)
+                BRA     Exit
+@0              MOVE.L  #1,(cdevStorage,A6)
+                BRA     Exit
+
+Init            CMP     #initDev,D0
+                BNE     Activ
+
+                MOVE.L  #GlobalSize,D0
+                _NewHandleClear
+                BNE     @7
+                MOVE.L  A0,(cdevStorage,A6)
+                _HLock
+                MOVE.L  (A0),A4
+
+                BSR     GetFindFolder
+                MOVE.B  D0,(hasFindFolder,A4)
+
+                PEA     (config,A4)
+                BSR     GetConfig
+
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #scaleItem,(SP)
+                PEA     (box,A6)
+                BSR     GetIBox
+                PEA     (box,A6)
+                MOVE    #3,-(SP)
+                MOVE    #3,-(SP)
+                _InsetRect
+                SUBQ.L  #4,SP
+                PEA     (box,A6)
+                PEA     (box,A6)
+                _TENew
+                MOVE.L  (SP)+,D0
+                BEQ     @6
+                MOVE.L  D0,(hTE0,A4)
+
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #delayItem,(SP)
+                PEA     (box,A6)
+                BSR     GetIBox
+                PEA     (box,A6)
+                MOVE    #3,-(SP)
+                MOVE    #3,-(SP)
+                _InsetRect
+                SUBQ.L  #4,SP
+                PEA     (box,A6)
+                PEA     (box,A6)
+                _TENew
+                MOVE.L  (SP)+,D0
+                BEQ     @5
+                MOVE.L  D0,(hTE1,A4)
+
+                MOVE    (config.scale,A4),D0
+                EXT.L   D0
+                LEA     (text,A6),A0
+                _NumToString
+                MOVEQ   #0,D0
+                MOVE.B  (A0)+,D0
+                MOVE.L  A0,-(SP)
+                MOVE.L  D0,-(SP)
+                MOVE.L  (hTE0,A4),-(SP)
+                _TESetText
+
+                MOVE    (config.delay,A4),D0
+                EXT.L   D0
+                LEA     (text,A6),A0
+                _NumToString
+                MOVEQ   #0,D0
+                MOVE.B  (A0)+,D0
+                MOVE.L  A0,-(SP)
+                MOVE.L  D0,-(SP)
+                MOVE.L  (hTE1,A4),-(SP)
+                _TESetText
+
+                MOVE    #scaleItem,(whichTE,A4)
+                MOVE.L  (hTE0,A4),(hTE,A4)
+
+                MOVE.L  #0,-(SP)
+                MOVE.L  #32767,-(SP)
+                MOVE.L  (hTE,A4),-(SP)
+                _TESetSelect
+                MOVE.L  (hTE,A4),-(SP)
+                _TEActivate
+
+                CMP     #2,(config.format,A4)
+                BHS.S   @0
+
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #folderItem,(SP)
+                MOVE    #255,-(SP)
+                BSR     SetIHilite
+
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #applItem,(SP)
+                MOVE    #255,-(SP)
+                BSR     SetIHilite
+
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #nameItem,(SP)
+                MOVE    #255,-(SP)
+                BSR     SetIHilite
+
+@0              BTST    #15,(config.options,A4)
+                BEQ.S   @1
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #crsrItem,(SP)
+                MOVE    #1,-(SP)
+                BSR     SetIValue
+
+@1              BTST    #14,(config.options,A4)
+                BEQ.S   @2
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #forceItem,(SP)
+                MOVE    #1,-(SP)
+                BSR     SetIValue
+
+@2              BTST    #13,(config.options,A4)
+                BEQ.S   @3
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #nameItem,(SP)
+                MOVE    #1,-(SP)
+                BSR     SetIValue
+
+@3              BTST    #12,(config.options,A4)
+                BEQ.S   @4
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #noteItem,(SP)
+                MOVE    #1,-(SP)
+                BSR     SetIValue
+
+@4              MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #areaItem,(SP)
+                MOVE    #-4048,-(SP)
+                BSR     AdjustPopupBox
+
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #formatItem,(SP)
+                MOVE    #-4047,-(SP)
+                BSR     AdjustPopupBox
+
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #scaleItem,(SP)
+                PEA     (box,A6)
+                BSR     GetIBox
+
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #delayItem,(SP)
+                PEA     (info,A6)
+                BSR     GetIBox
+
+                SUBQ.L  #4,SP
+                _NewRgn
+                MOVE.L  (SP)+,A3
+                _OpenRgn
+                PEA     (box,A6)
+                _FrameRect
+                PEA     (info,A6)
+                _FrameRect
+                MOVE.L  A3,-(SP)
+                _CloseRgn
+                MOVE.L  A3,(mouseRgn,A4)
+
+                MOVE.L  (cdevStorage,A6),A0
+                _HUnlock
+                BRA     Exit
+
+@5              MOVE.L  (hTE0,A4),-(SP)
+                _TEDispose
+@6              MOVE.L  (cdevStorage,A6),A0
+                _DisposeHandle
+@7              MOVE.L  #cdevMemErr,(cdevStorage,A6)
+                BRA     Exit
+
+Activ           CMP     #activDev,D0
+                BNE.S   Update
+
+                MOVE.L  (cdevStorage,A6),A0
+                _HGetState
+                MOVE.B  D0,-(SP)
+                _HLock
+                MOVE.L  (A0),A4
+
+                MOVE.L  (hTE,A4),-(SP)
+                _TEActivate
+
+                MOVE.L  (cdevStorage,A6),A0
+                MOVE.B  (SP)+,D0
+                _HSetState
+                BRA     Exit
+
+Update          CMP     #updateDev,D0
+                BNE     Nul
+
+                MOVE.L  (cdevStorage,A6),A0
+                _HGetState
+                MOVE.B  D0,-(SP)
+                _HLock
+                MOVE.L  (A0),A4
+
+                SUBQ.L  #4,SP
+                _NewRgn
+                MOVE.L  (SP),-(SP)
+                _GetClip
+
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #bannerItem,(SP)
+                PEA     (box,A6)
+                BSR     GetIBox
+                PEA     (box,A6)
+                _ClipRect
+                PEA     (box,A6)
+                _EraseRect
+                MOVE.L  (box.topLeft,A6),(info+Rect.topLeft,A6)
+                MOVE.L  (box.botRight,A6),(info+Rect.botRight,A6)
+                PEA     (info+Rect.topLeft,A6)
+                _LocalToGlobal
+                PEA     (info+Rect.botRight,A6)
+                _LocalToGlobal
+                SUBQ.L  #4,SP
+                PEA     (info,A6)
+                BSR     GetBanner
+                MOVE.L  (SP)+,D0
+                BEQ.S   @0
+                MOVE.L  D0,A3
+                MOVE.L  (A3),A0
+                MOVE    (box.bottom,A6),D0
+                SUB     (box.top,A6),D0
+                SUB     (Picture.picFrame.bottom,A0),D0
+                ADD     (Picture.picFrame.top,A0),D0
+                BNE.S   @0
+                MOVE    (box.right,A6),D0
+                SUB     (box.left,A6),D0
+                SUB     (Picture.picFrame.right,A0),D0
+                ADD     (Picture.picFrame.left,A0),D0
+                BNE.S   @0
+                MOVE.L  A3,A0
+                _HNoPurge
+                MOVE.L  A3,-(SP)
+                PEA     (box,A6)
+                _DrawPicture
+                MOVE.L  A3,A0
+                _HPurge
+
+@0              MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #keysTxtItem,(SP)
+                PEA     (box,A6)
+                BSR     GetIBox
+                PEA     (box,A6)
+                _ClipRect
+                PEA     (box,A6)
+                _EraseRect
+                PEA     (info,A6)
+                _GetFontInfo
+                MOVE    #0,-(SP)
+                MOVE    (info.ascent,A6),-(SP)
+                PEA     (box.topLeft,A6)
+                _AddPt
+                PEA     (text,A6)
+                MOVE    (config.keyCode,A4),-(SP)
+                BSR     GetKeyString
+                MOVE.L  (box.topLeft,A6),-(SP)
+                _MoveTo
+                PEA     (text,A6)
+                _DrawString
+
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #folderTxtItem,(SP)
+                PEA     (box,A6)
+                BSR     GetIBox
+                PEA     (box,A6)
+                _ClipRect
+                PEA     (box,A6)
+                _EraseRect
+                SUBQ.L  #2,SP
+                PEA     (config.volName,A4)
+                MOVE.L  (config.dirID,A4),-(SP)
+                PEA     (text,A6)
+                BSR     GetDirName
+                TST     (SP)+
+                BNE.S   @1
+                PEA     (info,A6)
+                _GetFontInfo
+                MOVE    #0,-(SP)
+                MOVE    (info.ascent,A6),-(SP)
+                PEA     (box.topLeft,A6)
+                _AddPt
+                MOVE.L  (box.topLeft,A6),-(SP)
+                _MoveTo
+                PEA     (text,A6)
+                _DrawString
+
+@1              MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #applTxtItem,(SP)
+                PEA     (box,A6)
+                BSR     GetIBox
+                PEA     (box,A6)
+                _ClipRect
+                PEA     (box,A6)
+                _EraseRect
+                PEA     (info,A6)
+                _GetFontInfo
+                MOVE    #0,-(SP)
+                MOVE    (info.ascent,A6),-(SP)
+                PEA     (box.topLeft,A6)
+                _AddPt
+                MOVE    (config.format,A4),D0
+                SUBQ    #2,D0
+                BNE.S   @2
+                LEA     (config.applPICT.fileName,A4),A3
+                BRA.S   @6
+@2              SUBQ    #1,D0
+                BNE.S   @3
+                LEA     (config.applTIFF5.fileName,A4),A3
+                BRA.S   @6
+@3              SUBQ    #1,D0
+                BNE.S   @4
+                LEA     (config.applTIFF4.fileName,A4),A3
+                BRA.S   @6
+@4              SUBQ    #1,D0
+                BNE.S   @7
+                LEA     (config.applGIF87.fileName,A4),A3
+                BRA.S   @6
+@7              SUBQ    #1,D0
+                BNE.S   @5
+                LEA     (config.applPaint.fileName,A4),A3
+                BRA.S   @6
+@5              LEA     #'',A3
+@6              MOVE.L  (box.topLeft,A6),-(SP)
+                _MoveTo
+                MOVE.L  A3,-(SP)
+                _DrawString
+
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #areaTxtItem,(SP)
+                MOVE    #-4047,-(SP)
+                MOVE    #1,-(SP)
+                BSR     DrawPopupTitle
+
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #areaItem,(SP)
+                MOVE    #-4048,-(SP)
+                MOVE    (config.area,A4),-(SP)
+                ADDQ    #1,(SP)
+                BSR     DrawPopupBox
+
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #formatTxtItem,(SP)
+                MOVE    #-4047,-(SP)
+                MOVE    #2,-(SP)
+                BSR     DrawPopupTitle
+
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #formatItem,(SP)
+                MOVE    #-4047,-(SP)
+                MOVE    (config.format,A4),-(SP)
+                ADDQ    #1,(SP)
+                BSR     DrawPopupBox
+
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #scaleItem,(SP)
+                PEA     (box,A6)
+                BSR     GetIBox
+                PEA     (box,A6)
+                _ClipRect
+                PEA     (box,A6)
+                _EraseRect
+                PEA     (box,A6)
+                _FrameRect
+                PEA     (box,A6)
+                MOVE.L  (hTE0,A4),-(SP)
+                _TEUpdate
+
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #delayItem,(SP)
+                PEA     (box,A6)
+                BSR     GetIBox
+                PEA     (box,A6)
+                _ClipRect
+                PEA     (box,A6)
+                _EraseRect
+                PEA     (box,A6)
+                _FrameRect
+                PEA     (box,A6)
+                MOVE.L  (hTE1,A4),-(SP)
+                _TEUpdate
+
+                MOVE.L  (SP),-(SP)
+                _SetClip
+                _DisposeRgn
+
+                MOVE.L  (cdevStorage,A6),A0
+                MOVE.B  (SP)+,D0
+                _HSetState
+                BRA     Exit
+
+Nul             CMP     #nulDev,D0
+                BNE.S   NCursor
+
+                MOVE.L  (cdevStorage,A6),A0
+                _HGetState
+                MOVE.B  D0,-(SP)
+                _HLock
+                MOVE.L  (A0),A4
+
+                MOVE.L  (hTE,A4),-(SP)
+                _TEIdle
+
+                MOVE.L  (cdevStorage,A6),A0
+                MOVE.B  (SP)+,D0
+                _HSetState
+                BRA     Exit
+
+NCursor         CMP     #cursorDev,D0
+                BNE.S   Hit
+
+                MOVE.L  (cdevStorage,A6),A0
+                _HGetState
+                MOVE.B  D0,-(SP)
+                _HLock
+                MOVE.L  (A0),A4
+
+                PEA     (loc,A6)
+                _GetMouse
+                SUBQ.L  #2,SP
+                MOVE.L  (loc,A6),-(SP)
+                MOVE.L  (mouseRgn,A4),-(SP)
+                _PtInRgn
+                TST.B   (SP)+
+                BNE.S   @0
+                MOVE    #arrowCursor,-(SP)
+                BSR     SetCursor
+                BRA.S   @1
+@0              MOVE    #iBeamCursor,-(SP)
+                BSR     SetCursor
+
+@1              MOVE.L  (cdevStorage,A6),A0
+                MOVE.B  (SP)+,D0
+                _HSetState
+                BRA     Exit
+
+Hit             CMP     #hitDev,D0
+                BNE     KeyEvt
+
+                MOVE.L  (cdevStorage,A6),A0
+                _HGetState
+                MOVE.B  D0,-(SP)
+                _HLock
+                MOVE.L  (A0),A4
+
+                MOVE    (item,A6),D0
+                SUB     (numItems,A6),D0
+
+                CMP     #keysItem,D0
+                BNE.S   @2
+                MOVE.L  (theEvent,A6),A0
+                MOVE    (EventRecord.modifiers,A0),D0
+                BTST    #optionKeyBit,D0
+                BNE.S   @0
+                SUBQ.L  #2,SP
+                BSR     GetKey
+                MOVE    (SP)+,D0
+                CMP     #-1,D0
+                BEQ     @23
+                MOVE    D0,(config.keyCode,A4)
+                BRA.S   @1
+@0              MOVE    #$0314,(config.keyCode,A4)
+@1              MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #keysTxtItem,(SP)
+                PEA     (box,A6)
+                BSR     GetIBox
+                PEA     (box,A6)
+                _InvalRect
+                BRA     @23
+
+@2              CMP     #folderItem,D0
+                BNE.S   @5
+                MOVE.L  (theEvent,A6),A0
+                MOVE    (EventRecord.modifiers,A0),D0
+                BTST    #optionKeyBit,D0
+                BNE.S   @3
+                PEA     (config.volName,A4)
+                PEA     (config.dirID,A4)
+                BSR     GetFolder
+                BRA.S   @4
+@3              CLR.B   (config.volName,A4)
+                MOVE.L  #0,(config.dirID,A4)
+@4              MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #folderTxtItem,(SP)
+                PEA     (box,A6)
+                BSR     GetIBox
+                PEA     (box,A6)
+                _InvalRect
+                BRA     @23
+
+@5              CMP     #applItem,D0
+                BNE.S   @12
+                MOVE    (config.format,A4),D0
+                SUBQ    #2,D0
+                BNE.S   @6
+                LEA     (config.applPICT,A4),A3
+                BRA.S   @9
+@6              SUBQ    #1,D0
+                BNE.S   @7
+                LEA     (config.applTIFF5,A4),A3
+                BRA.S   @9
+@7              SUBQ    #1,D0
+                BNE.S   @8
+                LEA     (config.applTIFF4,A4),A3
+                BRA.S   @9
+@8              SUBQ    #1,D0
+                BNE.S   @24
+                LEA     (config.applGIF87,A4),A3
+                BRA.S   @9
+@24             SUBQ    #1,D0
+                BNE     @23
+                LEA     (config.applPaint,A4),A3
+@9              MOVE.L  (theEvent,A6),A0
+                MOVE    (EventRecord.modifiers,A0),D0
+                BTST    #optionKeyBit,D0
+                BNE.S   @10
+                PEA     (applRec.fileName,A3)
+                PEA     (applRec.creator,A3)
+                BSR     GetAppl
+                BRA.S   @11
+@10             CLR.B   (applRec.fileName,A3)
+                MOVE.L  #'CapV',(applRec.creator,A3)
+@11             MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #applTxtItem,(SP)
+                PEA     (box,A6)
+                BSR     GetIBox
+                PEA     (box,A6)
+                _InvalRect
+                BRA     @23
+
+@12             CMP     #scaleItem,D0
+                BNE.S   @14
+                CMP     #scaleItem,(whichTE,A4)
+                BEQ.S   @13
+                MOVE.L  (hTE,A4),-(SP)
+                _TEDeactivate
+                MOVE    #scaleItem,(whichTE,A4)
+                MOVE.L  (hTE0,A4),(hTE,A4)
+                MOVE.L  #0,-(SP)
+                MOVE.L  #0,-(SP)
+                MOVE.L  (hTE,A4),-(SP)
+                _TESetSelect
+                MOVE.L  (hTE,A4),-(SP)
+                _TEActivate
+@13             MOVE.L  (theEvent,A6),A3
+                PEA     (EventRecord.where,A3)
+                _GlobalToLocal
+                MOVE.L  (EventRecord.where,A3),-(SP)
+                MOVE    (EventRecord.modifiers,A3),D0
+                BTST    #shiftKeyBit,D0
+                SNE     -(SP)
+                MOVE.L  (hTE,A4),-(SP)
+                _TEClick
+                BRA     @23
+
+@14             CMP     #delayItem,D0
+                BNE.S   @16
+                CMP     #delayItem,(whichTE,A4)
+                BEQ.S   @15
+                MOVE.L  (hTE,A4),-(SP)
+                _TEDeactivate
+                MOVE    #delayItem,(whichTE,A4)
+                MOVE.L  (hTE1,A4),(hTE,A4)
+                MOVE.L  #0,-(SP)
+                MOVE.L  #0,-(SP)
+                MOVE.L  (hTE,A4),-(SP)
+                _TESetSelect
+                MOVE.L  (hTE,A4),-(SP)
+                _TEActivate
+@15             MOVE.L  (theEvent,A6),A3
+                PEA     (EventRecord.where,A3)
+                _GlobalToLocal
+                MOVE.L  (EventRecord.where,A3),-(SP)
+                MOVE    (EventRecord.modifiers,A3),D0
+                BTST    #shiftKeyBit,D0
+                SNE     -(SP)
+                MOVE.L  (hTE,A4),-(SP)
+                _TEClick
+                BRA     @23
+
+@16             CMP     #crsrItem,D0
+                BNE.S   @17
+                BCHG    #15,(config.options,A4)
+                SEQ     D0
+                EXT     D0
+                NEG     D0
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #crsrItem,(SP)
+                MOVE    D0,-(SP)
+                BSR     SetIValue
+                BRA     @23
+
+@17             CMP     #forceItem,D0
+                BNE.S   @18
+                BCHG    #14,(config.options,A4)
+                SEQ     D0
+                EXT     D0
+                NEG     D0
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #forceItem,(SP)
+                MOVE    D0,-(SP)
+                BSR     SetIValue
+                BRA     @23
+
+@18             CMP     #nameItem,D0
+                BNE.S   @19
+                BCHG    #13,(config.options,A4)
+                SEQ     D0
+                EXT     D0
+                NEG     D0
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #nameItem,(SP)
+                MOVE    D0,-(SP)
+                BSR     SetIValue
+                BRA     @23
+
+@19             CMP     #noteItem,D0
+                BNE.S   @20
+                BCHG    #12,(config.options,A4)
+                SEQ     D0
+                EXT     D0
+                NEG     D0
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #noteItem,(SP)
+                MOVE    D0,-(SP)
+                BSR     SetIValue
+                BRA     @23
+
+@20             CMP     #areaItem,D0
+                BNE     @21
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #areaTxtItem,(SP)
+                PEA     (box,A6)
+                BSR     GetIBox
+                PEA     (box,A6)
+                _InvertRect
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #areaItem,(SP)
+                PEA     (info,A6)
+                BSR     GetIBox
+                PEA     (info+Rect.topLeft,A6)
+                _LocalToGlobal
+                SUBQ.L  #4,SP
+                MOVE    #-4048,-(SP)
+                _GetMenu
+                MOVE.L  (SP)+,A3
+                SUBQ.L  #4,SP
+                MOVE.L  #'proc',-(SP)
+                MOVE    #-4048,-(SP)
+                _Get1Resource
+                MOVE.L  (SP)+,A2
+                MOVE.L  A2,A0
+                _HNoPurge
+                MOVE.L  (A3),A1
+                MOVE.L  (A2),A0
+                MOVE.L  (MenuInfo.menuProc,A1),(12,A0)
+                MOVE    #14,(16,A0)
+                MOVE.L  A2,(MenuInfo.menuProc,A1)
+                MOVE.L  A3,-(SP)
+                _CalcMenuSize
+                MOVE    (config.area,A4),D7
+                ADDQ    #1,D7
+                MOVE.L  A3,-(SP)
+                MOVE    D7,-(SP)
+                ST      -(SP)
+                _CheckItem
+                MOVE.L  A3,-(SP)
+                MOVE    #-1,-(SP)
+                _InsertMenu
+                SUBQ.L  #4,SP
+                MOVE.L  A3,-(SP)
+                MOVE    (info+Rect.top,A6),-(SP)
+                MOVE    (info+Rect.left,A6),-(SP)
+                MOVE    D7,-(SP)
+                _PopUpMenuSelect
+                MOVE.L  (SP)+,D6
+                MOVE.L  (A3),A0
+                MOVE    (MenuInfo.menuID,A0),-(SP)
+                _DeleteMenu
+                MOVE.L  A2,-(SP)
+                _ReleaseResource
+                MOVE.L  A3,-(SP)
+                _ReleaseResource
+                PEA     (box,A6)
+                _InvertRect
+                TST.L   D6
+                BEQ     @23
+                SUBQ    #1,D6
+                MOVE    D6,(config.area,A4)
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #areaItem,(SP)
+                PEA     (box,A6)
+                BSR     GetIBox
+                PEA     (box,A6)
+                _InvalRect
+                BRA     @23
+
+@21             CMP     #formatItem,D0
+                BNE     @23
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #formatTxtItem,(SP)
+                PEA     (box,A6)
+                BSR     GetIBox
+                PEA     (box,A6)
+                _InvertRect
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #formatItem,(SP)
+                PEA     (info,A6)
+                BSR     GetIBox
+                PEA     (info+Rect.topLeft,A6)
+                _LocalToGlobal
+                SUBQ.L  #4,SP
+                MOVE    #-4047,-(SP)
+                _GetMenu
+                MOVE.L  (SP)+,A3
+                SUBQ.L  #4,SP
+                MOVE.L  #'proc',-(SP)
+                MOVE    #-4048,-(SP)
+                _Get1Resource
+                MOVE.L  (SP)+,A2
+                MOVE.L  A2,A0
+                _HNoPurge
+                MOVE.L  (A3),A1
+                MOVE.L  (A2),A0
+                MOVE.L  (MenuInfo.menuProc,A1),(12,A0)
+                MOVE    #14,(16,A0)
+                MOVE.L  A2,(MenuInfo.menuProc,A1)
+                MOVE.L  A3,-(SP)
+                _CalcMenuSize
+                MOVE    (config.format,A4),D7
+                ADDQ    #1,D7
+                MOVE.L  A3,-(SP)
+                MOVE    D7,-(SP)
+                ST      -(SP)
+                _CheckItem
+                MOVE.L  A3,-(SP)
+                MOVE    #-1,-(SP)
+                _InsertMenu
+                SUBQ.L  #4,SP
+                MOVE.L  A3,-(SP)
+                MOVE    (info+Rect.top,A6),-(SP)
+                MOVE    (info+Rect.left,A6),-(SP)
+                MOVE    D7,-(SP)
+                _PopUpMenuSelect
+                MOVE.L  (SP)+,D6
+                MOVE.L  (A3),A0
+                MOVE    (MenuInfo.menuID,A0),-(SP)
+                _DeleteMenu
+                MOVE.L  A2,-(SP)
+                _ReleaseResource
+                MOVE.L  A3,-(SP)
+                _ReleaseResource
+                PEA     (box,A6)
+                _InvertRect
+                TST.L   D6
+                BEQ.S   @23
+                SUBQ    #1,D6
+                MOVE    D6,(config.format,A4)
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #formatItem,(SP)
+                PEA     (box,A6)
+                BSR     GetIBox
+                PEA     (box,A6)
+                _InvalRect
+                MOVE    #255,D6
+                CMP     #2,(config.format,A4)
+                BLO.S   @22
+                MOVE    #0,D6
+@22             MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #folderItem,(SP)
+                MOVE    D6,-(SP)
+                BSR     SetIHilite
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #applItem,(SP)
+                MOVE    D6,-(SP)
+                BSR     SetIHilite
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #nameItem,(SP)
+                MOVE    D6,-(SP)
+                BSR     SetIHilite
+                MOVE.L  (CPDialog,A6),-(SP)
+                MOVE    (numItems,A6),-(SP)
+                ADD     #applTxtItem,(SP)
+                PEA     (box,A6)
+                BSR     GetIBox
+                PEA     (box,A6)
+                _InvalRect
+
+@23             MOVE.L  (cdevStorage,A6),A0
+                MOVE.B  (SP)+,D0
+                _HSetState
+                BRA     Exit
+
+KeyEvt          CMP     #keyEvtDev,D0
+                BNE     DeActiv
+
+                MOVE.L  (cdevStorage,A6),A0
+                _HGetState
+                MOVE.B  D0,-(SP)
+                _HLock
+                MOVE.L  (A0),A4
+
+                MOVE.L  (theEvent,A6),A3
+
+                MOVE    (EventRecord.modifiers,A3),D0
+                BTST    #cmdKeyBit,D0
+                BNE     @6
+
+                MOVE.L  (EventRecord.message,A3),D0
+                CMP.B   #ETX,D0
+                BEQ.S   @1
+                CMP.B   #BS,D0
+                BEQ.S   @0
+                CMP.B   #HT,D0
+                BEQ.S   @2
+                CMP.B   #CR,D0
+                BEQ.S   @1
+                CMP.B   #FS,D0
+                BLO.S   @5
+                CMP.B   #US,D0
+                BLS.S   @0
+                CMP.B   #'0',D0
+                BLO.S   @5
+                CMP.B   #'9',D0
+                BHI.S   @5
+
+@0              MOVE.L  (EventRecord.message,A3),D0
+                AND     #$00FF,D0
+                MOVE    D0,-(SP)
+                MOVE.L  (hTE,A4),-(SP)
+                _TEKey
+                BRA.S   @5
+
+@1              MOVE.L  #0,-(SP)
+                MOVE.L  #32767,-(SP)
+                MOVE.L  (hTE,A4),-(SP)
+                _TESetSelect
+                BRA.S   @5
+
+@2              MOVE.L  (hTE,A4),-(SP)
+                _TEDeactivate
+                CMP     #scaleItem,(whichTE,A4)
+                BEQ.S   @3
+                MOVE    #scaleItem,(whichTE,A4)
+                MOVE.L  (hTE0,A4),(hTE,A4)
+                BRA.S   @4
+@3              MOVE    #delayItem,(whichTE,A4)
+                MOVE.L  (hTE1,A4),(hTE,A4)
+@4              MOVE.L  #0,-(SP)
+                MOVE.L  #32767,-(SP)
+                MOVE.L  (hTE,A4),-(SP)
+                _TESetSelect
+                MOVE.L  (hTE,A4),-(SP)
+                _TEActivate
+
+@5              MOVE    #nullEvent,(EventRecord.what,A3)
+
+@6              MOVE.L  (cdevStorage,A6),A0
+                MOVE.B  (SP)+,D0
+                _HSetState
+                BRA     Exit
+
+DeActiv         CMP     #deActivDev,D0
+                BNE.S   Close
+
+                MOVE.L  (cdevStorage,A6),A0
+                _HGetState
+                MOVE.B  D0,-(SP)
+                _HLock
+                MOVE.L  (A0),A4
+
+                MOVE.L  (hTE,A4),-(SP)
+                _TEDeactivate
+
+                MOVE.L  (cdevStorage,A6),A0
+                MOVE.B  (SP)+,D0
+                _HSetState
+                BRA     Exit
+
+Close           CMP     #closeDev,D0
+                BNE     Exit
+
+                MOVE.L  (cdevStorage,A6),A0
+                _HLock
+                MOVE.L  (A0),A4
+
+                MOVE.L  (mouseRgn,A4),-(SP)
+                _DisposeRgn
+
+                SUBQ.L  #4,SP
+                MOVE.L  (hTE0,A4),-(SP)
+                _TEGetText
+                MOVE.L  (SP)+,A0
+                _GetHandleSize
+                CMP.L   #255,D0
+                BLS.S   @0
+                MOVE.L  #255,D0
+@0              LEA     (text,A6),A1
+                MOVE.B  D0,(A1)+
+                MOVE.L  (A0),A0
+                _BlockMove
+                LEA     (text,A6),A0
+                _StringToNum
+                CMP.L   #1,D0
+                BGE.S   @1
+                MOVEQ   #1,D0
+@1              CMP.L   #100,D0
+                BLE.S   @2
+                MOVEQ   #100,D0
+@2              MOVE    D0,(config.scale,A4)
+
+                SUBQ.L  #4,SP
+                MOVE.L  (hTE1,A4),-(SP)
+                _TEGetText
+                MOVE.L  (SP)+,A0
+                _GetHandleSize
+                CMP.L   #255,D0
+                BLS.S   @3
+                MOVE.L  #255,D0
+@3              LEA     (text,A6),A1
+                MOVE.B  D0,(A1)+
+                MOVE.L  (A0),A0
+                _BlockMove
+                LEA     (text,A6),A0
+                _StringToNum
+                CMP.L   #0,D0
+                BGE.S   @4
+                MOVEQ   #0,D0
+@4              CMP.L   #999,D0
+                BLE.S   @5
+                MOVE.L  #999,D0
+@5              MOVE    D0,(config.delay,A4)
+
+                MOVE.L  (hTE1,A4),-(SP)
+                _TEDispose
+                MOVE.L  (hTE0,A4),-(SP)
+                _TEDispose
+
+                PEA     (config,A4)
+                BSR     PutConfig
+
+                MOVE.L  (cdevStorage,A6),A0
+                _DisposeHandle
+                MOVE.L  #cdevUnset,(cdevStorage,A6)
+
+Exit            MOVE.L  (cdevStorage,A6),(Result,A6)
+
+                MOVEM.L (SP)+,D3-D7/A2-A4
+                UNLK    A6
+                MOVE.L  (SP)+,A0
+                ADD     #ParamSize,SP
+                JMP     (A0)
+
+                ENDF
+;———————————————————————————————————————————————————————————————
+                END
